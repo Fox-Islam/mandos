@@ -1,0 +1,568 @@
+from __future__ import annotations
+
+import asyncio
+import re
+import time
+
+import httpx
+
+from orchestrator.budget import BudgetEstimate, classify_budget, estimate_provider_budget
+from orchestrator.costing import CostInput, estimate_cost
+from orchestrator.judge import JudgeOutcome, build_judge_user, run_deliberation_judge
+from orchestrator.model_catalog import metadata_from_provider_override, resolve_model_metadata
+from orchestrator.models import (
+    ChatRequest,
+    ChatResult,
+    DeliberateRequest,
+    DeliberationResponse,
+    PanelAnswer,
+    RawAnswer,
+)
+from orchestrator.observability import get_logger
+from orchestrator.providers.factory import build_provider
+from orchestrator.sessions import (
+    append_turn,
+    apply_prior_answer,
+    build_messages,
+    estimate_messages_tokens,
+    load_session,
+    session_lock,
+    write_session,
+)
+
+SYSTEM = "Answer independently and thoroughly. Do not refer to other panelists."
+
+CONTRACT_VERSION = "1"
+
+log = get_logger("imladris.panel")
+
+_FAILURE_PRIORITY = ("insufficient_credits", "rate_limited", "all_panels_failed")
+_HTTP_CODE_RE = re.compile(r"\bHTTP (\d{3})\b")
+
+
+def _classify_one(error: str) -> str:
+    """Classify a single provider error, preferring the structured ``HTTP <code>``
+    prefix the provider emits over loose substring matches."""
+    text = error.lower()
+    code_match = _HTTP_CODE_RE.search(error)
+    code = code_match.group(1) if code_match else None
+    if code == "402" or any(t in text for t in ("insufficient", "quota", "payment required")):
+        return "insufficient_credits"
+    if code == "429" or "rate limit" in text or "rate-limit" in text or "too many requests" in text:
+        return "rate_limited"
+    return "all_panels_failed"
+
+
+def _classify_failure(errors: list[str]) -> str:
+    """Aggregate per-provider classifications by fixed priority (order-independent).
+
+    An all-timeout batch folds into ``all_panels_failed`` by design (timeouts are not
+    a distinct ``FailureKind``); each provider's own ``error`` still carries the
+    timeout/deadline string for the host."""
+    seen = {_classify_one(e) for e in errors if e}
+    return next((kind for kind in _FAILURE_PRIORITY if kind in seen), "all_panels_failed")
+
+
+def _log_error_kind(error: str | None) -> str | None:
+    if not error:
+        return None
+    code_match = _HTTP_CODE_RE.search(error)
+    if code_match:
+        return f"HTTP {code_match.group(1)}"
+    text = error.lower()
+    if "overall deadline exceeded" in text:
+        return "deadline_exceeded"
+    if "timeout" in text:
+        return "timeout"
+    if "connection" in text:
+        return "connection_error"
+    return "provider_error"
+
+
+def failure_response(
+    question: str,
+    *,
+    failure: str,
+    error: str,
+    depth: int = 0,
+    thread_id: str | None = None,
+) -> DeliberationResponse:
+    """Build a contract-stable failure envelope.
+
+    Every non-success return (depth cap, resolution/config error, ``ok == 0``)
+    carries the same ``meta`` key set as a successful run so a host can read
+    ``meta["panel_size"]`` / ``meta["cost_estimate_usd"]`` unconditionally, plus a
+    typed ``failure`` and an ``error`` message. Renders ``text`` so the host always
+    has something to author from (invariant 6/7)."""
+    basis = estimate_cost([], None)
+    resp = DeliberationResponse(
+        question=question,
+        thread_id=thread_id,
+        meta={
+            "contract_version": CONTRACT_VERSION,
+            "elapsed_ms": 0,
+            "depth": depth,
+            "panel_size": 0,
+            "ok": 0,
+            "failed": 0,
+            "preset": None,
+            "analysis_model": None,
+            "budget": [],
+            "compacted": False,
+            "compacted_providers": [],
+            "failure": failure,
+            "error": error,
+            "cost_estimate_usd": basis["usd"],
+            "cost_basis": {k: v for k, v in basis.items() if k != "usd"},
+        },
+    )
+    resp.text = _render(resp)
+    log.warning("deliberation.failure", failure=failure, error=error[:200], depth=depth)
+    return resp
+
+
+def _resolve_panel(request: DeliberateRequest, config, preset) -> list[str]:
+    if request.panel:
+        ids = list(request.panel)
+    elif preset:
+        ids = list(preset.panel)
+    else:
+        ids = [p.id for p in config.providers if p.enabled and "panel" in p.roles]
+    if not ids:
+        raise ValueError("effective panel is empty")
+    if len(ids) > 8:
+        raise ValueError("effective panel exceeds 8 members")
+    if len(ids) != len(set(ids)):
+        raise ValueError("effective panel contains duplicate providers")
+    provider_desc = config.provider_map()
+    bad = [
+        pid for pid in ids if pid not in provider_desc or "panel" not in provider_desc[pid].roles
+    ]
+    if bad:
+        raise ValueError(f"unknown or non-panel providers: {bad}")
+    return ids
+
+
+def _provider_catalog_key(provider) -> str:
+    return provider.catalog_key or provider.kind
+
+
+def _context_window_for(provider) -> int | None:
+    if provider.context_window:
+        return provider.context_window
+    if provider.resolved_context_window:
+        return provider.resolved_context_window
+    metadata = resolve_model_metadata(_provider_catalog_key(provider), provider.model)
+    if metadata is not None:
+        return metadata.context_window
+    override = metadata_from_provider_override(provider)
+    return override.context_window if override else None
+
+
+def _budget_meta(
+    request: DeliberateRequest,
+    config,
+    panel_ids: list[str],
+    *,
+    session_estimates: dict[str, int] | None = None,
+) -> list[dict]:
+    expected_output = request.max_tokens or config.defaults.max_tokens or 0
+    provider_desc = config.provider_map()
+    budgets = []
+    for pid in panel_ids:
+        provider = provider_desc[pid]
+        context_window = _context_window_for(provider)
+        if session_estimates is not None and pid in session_estimates:
+            state, ratio = classify_budget(
+                session_estimates[pid],
+                context_window,
+                warning_ratio=config.defaults.budget_warning_ratio,
+                error_ratio=config.defaults.budget_error_ratio,
+            )
+            budgets.append(
+                BudgetEstimate(
+                    provider_id=provider.id,
+                    model=provider.model,
+                    context_window=context_window,
+                    estimated_tokens=session_estimates[pid],
+                    state=state,
+                    ratio=ratio,
+                ).as_dict()
+            )
+            continue
+        budgets.append(
+            estimate_provider_budget(
+                provider,
+                prompt=request.prompt,
+                context=request.context,
+                context_window=context_window,
+                expected_output_tokens=expected_output,
+                warning_ratio=config.defaults.budget_warning_ratio,
+                error_ratio=config.defaults.budget_error_ratio,
+            ).as_dict()
+        )
+    return budgets
+
+
+def _render_contradictions(contradictions) -> list[str]:
+    lines = ["\n**Contradictions**"]
+    for c in contradictions:
+        lines.append(f"- *{c.topic}*")
+        lines.extend(f"  - [{', '.join(p.ids)}] {p.claim}" for p in c.positions)
+    return lines
+
+
+def _render_analysis(an) -> list[str]:
+    lines = ["\n## Analysis"]
+    if an.consensus:
+        lines.append("\n**Consensus**")
+        lines.extend(f"- {c}" for c in an.consensus)
+    if an.contradictions:
+        lines.extend(_render_contradictions(an.contradictions))
+    if an.partial_coverage:
+        lines.append("\n**Partial coverage**")
+        lines.extend(f"- [{', '.join(pc.ids)}] {pc.point}" for pc in an.partial_coverage)
+    if an.unique_insights:
+        lines.append("\n**Unique insights**")
+        lines.extend(f"- [{u.id}] {u.insight}" for u in an.unique_insights)
+    if an.blind_spots:
+        lines.append("\n**Blind spots**")
+        lines.extend(f"- {b}" for b in an.blind_spots)
+    if an.confidence_notes:
+        lines.append(f"\n**Confidence:** {an.confidence_notes}")
+    return lines
+
+
+def _render(resp: DeliberationResponse) -> str:
+    lines = [f"# Imladris deliberation\n\n**Question:** {resp.question}\n"]
+    lines.append("## Panel")
+    for a in resp.panel:
+        suffix = f" — {a.error}" if a.error else ""
+        lines.append(f"- **{a.id}** ({a.status}, {a.latency_ms} ms){suffix}")
+    if resp.analysis:
+        lines.extend(_render_analysis(resp.analysis))
+    if resp.raw_answers:
+        lines.append("\n## Raw answers")
+        for r in resp.raw_answers:
+            lines.append(f"\n### {r.id}\n{r.answer}")
+    return "\n".join(lines)
+
+
+def _resolve_analysis_id(request: DeliberateRequest, preset, config) -> str | None:
+    return request.analysis_model or (
+        (preset.analysis if preset else None) or config.defaults.analysis_model
+    )
+
+
+def _resolve_analysis_provider(analysis_id: str | None, provider_desc, client):
+    """Resolve the judge provider for ``analysis_id``, enforcing enablement **and**
+    the ``judge`` role before building it.
+
+    Config-time validation only covers ``defaults.analysis_model`` and
+    ``preset.analysis``; a per-request ``analysis_model`` override bypasses it, so it
+    must be re-checked here. Returns ``(provider, judge_error)``: on any mismatch the
+    provider is ``None`` and a ``judge_error`` string is returned so the pipeline
+    degrades gracefully (invariant 7) — the offending provider never receives the
+    ``ANALYSIS_SYSTEM`` prompt and raw answers are still returned."""
+    if not analysis_id:
+        return None, None
+    descriptor = provider_desc.get(analysis_id)
+    if descriptor is None:
+        return None, f"analysis_model {analysis_id!r} is not an enabled provider"
+    if "judge" not in descriptor.roles:
+        return None, f"analysis_model {analysis_id!r} is not a judge-role provider"
+    return build_provider(descriptor, client), None
+
+
+def _compose_user(prompt: str, context: str | None) -> str:
+    return prompt if not context else f"{prompt}\n\nCONTEXT:\n{context}"
+
+
+def _sent_input_text(chat_request: ChatRequest, fallback: str) -> str:
+    """The text actually sent to a provider, for the missing-usage cost fallback: the
+    full reconstructed history in session mode, else the composed one-shot prompt."""
+    if chat_request.messages is not None:
+        return "\n".join(message.content for message in chat_request.messages)
+    return fallback
+
+
+def _apply_cost(meta: dict, calls: list[CostInput], pricing) -> None:
+    """Set the advisory ``cost_estimate_usd`` float plus the ``cost_basis`` detail
+    (coverage + per-provider breakdown) on ``meta`` from one estimate."""
+    basis = estimate_cost(calls, pricing)
+    meta["cost_estimate_usd"] = basis["usd"]
+    meta["cost_basis"] = {k: v for k, v in basis.items() if k != "usd"}
+
+
+def _build_chat_requests(
+    request: DeliberateRequest,
+    config,
+    providers,
+    provider_desc,
+    session: dict | None,
+) -> tuple[dict[str, ChatRequest], dict[str, bool], dict[str, int]]:
+    user = _compose_user(request.prompt, request.context)
+    max_tokens = request.max_tokens or config.defaults.max_tokens
+    expected_output = max_tokens or 0
+    temperature = (
+        request.temperature if request.temperature is not None else config.defaults.temperature
+    )
+    compacted_by_provider: dict[str, bool] = {}
+    session_estimates: dict[str, int] = {}
+    chat_requests: dict[str, ChatRequest] = {}
+    for provider in providers:
+        provider_config = provider_desc[provider.id]
+        messages = None
+        if session is not None:
+            messages, provider_compacted = build_messages(
+                session,
+                system=SYSTEM,
+                prompt=request.prompt,
+                context=request.context,
+                max_history_turns=config.defaults.session_max_turns,
+                context_window=_context_window_for(provider_config),
+                expected_output_tokens=expected_output,
+                warning_ratio=config.defaults.budget_warning_ratio,
+            )
+            compacted_by_provider[provider.id] = provider_compacted
+            session_estimates[provider.id] = estimate_messages_tokens(
+                messages,
+                expected_output_tokens=expected_output,
+            )
+        chat_requests[provider.id] = ChatRequest(
+            system=SYSTEM,
+            user=user,
+            messages=messages,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            reasoning_effort=request.reasoning_effort,
+        )
+    return chat_requests, compacted_by_provider, session_estimates
+
+
+async def _call_provider(provider, chat_request: ChatRequest, deadline: float) -> ChatResult:
+    try:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("overall deadline exceeded")
+        return await asyncio.wait_for(
+            provider.complete(chat_request, deadline=deadline),
+            timeout=remaining,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return ChatResult(
+            provider_id=provider.id,
+            model=getattr(provider, "model", ""),
+            status="error",
+            error=str(exc) or type(exc).__name__,
+        )
+
+
+async def run_deliberation(request: DeliberateRequest, config) -> DeliberationResponse:
+    if request.thread_id:
+        async with session_lock(request.thread_id):
+            session_warning = None
+            try:
+                session = load_session(request.thread_id)
+            except Exception as exc:  # noqa: BLE001
+                session = {"thread_id": request.thread_id, "turns": []}
+                session_warning = f"session load failed: {type(exc).__name__}"
+            apply_prior_answer(session, request.prior_answer)
+            response = await _run_deliberation(request, config, session=session)
+            if session_warning:
+                response.meta["session_warning"] = session_warning
+            append_turn(
+                session,
+                prompt=request.prompt,
+                context=request.context,
+                raw_answers=response.raw_answers,
+                analysis=response.analysis,
+                compacted=response.compacted,
+            )
+            try:
+                write_session(session)
+            except Exception as exc:  # noqa: BLE001
+                response.meta["session_warning"] = (
+                    f"{response.meta.get('session_warning')}; " if session_warning else ""
+                ) + f"session write failed: {type(exc).__name__}"
+            return response
+    return await _run_deliberation(request, config)
+
+
+async def _run_deliberation(
+    request: DeliberateRequest,
+    config,
+    *,
+    session: dict | None = None,
+) -> DeliberationResponse:
+    if request.depth >= config.defaults.max_depth:
+        return failure_response(
+            request.prompt,
+            failure="fusion_invocation_capped",
+            error="max recursion depth exceeded",
+            depth=request.depth,
+            thread_id=request.thread_id,
+        )
+
+    started = time.perf_counter()
+    deadline = time.monotonic() + (request.timeout_s or config.defaults.timeout_s)
+    provider_desc = config.provider_map()
+    try:
+        preset = config.presets.get(request.preset or config.defaults.preset or "")
+        panel_ids = _resolve_panel(request, config, preset)
+        analysis_id = _resolve_analysis_id(request, preset, config)
+    except ValueError as exc:
+        return failure_response(
+            request.prompt,
+            failure="unexpected_error",
+            error=str(exc),
+            depth=request.depth,
+            thread_id=request.thread_id,
+        )
+
+    log.info(
+        "deliberation.start",
+        panel=panel_ids,
+        analysis_model=analysis_id,
+        preset=request.preset or config.defaults.preset,
+        depth=request.depth,
+        session=bool(request.thread_id),
+        prompt_chars=len(request.prompt),
+    )
+
+    async with httpx.AsyncClient() as client:
+        providers = [build_provider(provider_desc[pid], client) for pid in panel_ids]
+        chat_requests, compacted_by_provider, session_estimates = _build_chat_requests(
+            request, config, providers, provider_desc, session
+        )
+        compacted = any(compacted_by_provider.values())
+
+        results = await asyncio.gather(
+            *(_call_provider(p, chat_requests[p.id], deadline) for p in providers)
+        )
+
+        panel = [
+            PanelAnswer(
+                id=r.provider_id,
+                model=r.model,
+                status=r.status,
+                error=r.error,
+                latency_ms=r.latency_ms,
+                tokens=r.usage,
+                finish_reason=r.finish_reason,
+            )
+            for r in results
+        ]
+        for r in results:
+            log.info(
+                "provider.result",
+                provider=r.provider_id,
+                status=r.status,
+                attempts=r.attempts,
+                latency_ms=r.latency_ms,
+                error_kind=_log_error_kind(r.error),
+            )
+        ok_results = [r for r in results if r.status == "ok"]
+        raw = [RawAnswer(id=r.provider_id, model=r.model, answer=r.text) for r in ok_results]
+
+        meta = {
+            "contract_version": CONTRACT_VERSION,
+            "elapsed_ms": int((time.perf_counter() - started) * 1000),
+            "depth": request.depth,
+            "panel_size": len(panel),
+            "ok": len(ok_results),
+            "failed": len(panel) - len(ok_results),
+            "preset": request.preset or config.defaults.preset,
+            "analysis_model": analysis_id,
+            "budget": _budget_meta(
+                request,
+                config,
+                panel_ids,
+                session_estimates=session_estimates if session is not None else None,
+            ),
+            "compacted": compacted,
+            "compacted_providers": sorted(
+                provider_id
+                for provider_id, was_compacted in compacted_by_provider.items()
+                if was_compacted
+            ),
+        }
+
+        if not ok_results:
+            meta["failure"] = _classify_failure([r.error or "" for r in results])
+            meta["error"] = "all panel providers failed"
+            _apply_cost(meta, [CostInput(r.provider_id, r.usage) for r in results], config.pricing)
+            resp = DeliberationResponse(
+                question=request.prompt,
+                thread_id=request.thread_id,
+                compacted=compacted,
+                panel=panel,
+                meta=meta,
+            )
+            resp.text = _render(resp)
+            log.warning(
+                "deliberation.failed",
+                failure=meta["failure"],
+                failed=meta["failed"],
+                elapsed_ms=meta["elapsed_ms"],
+            )
+            return resp
+
+        analysis_provider, judge_role_error = _resolve_analysis_provider(
+            analysis_id, provider_desc, client
+        )
+        if judge_role_error:
+            outcome = JudgeOutcome(analysis_error=judge_role_error)
+        else:
+            outcome = await run_deliberation_judge(
+                request.prompt,
+                raw,
+                analysis_provider,
+                deadline=deadline,
+                max_tokens=request.max_tokens or config.defaults.max_tokens,
+            )
+
+        if outcome.analysis_error:
+            meta["judge_error"] = outcome.analysis_error
+
+        panel_input = _compose_user(request.prompt, request.context)
+        judge_input = build_judge_user(request.prompt, raw)
+        cost_calls = [
+            CostInput(
+                r.provider_id,
+                r.usage,
+                input_text=_sent_input_text(chat_requests[r.provider_id], panel_input),
+                output_text=r.text,
+            )
+            for r in ok_results
+        ] + [
+            CostInput(pid, usage, input_text=judge_input, output_text=outcome.analysis_text)
+            for pid, usage in outcome.usages
+        ]
+        _apply_cost(meta, cost_calls, config.pricing)
+
+        log.info(
+            "judge.result",
+            analysis=outcome.analysis is not None,
+            judge_error=outcome.analysis_error,
+        )
+
+    log.info(
+        "deliberation.done",
+        ok=meta["ok"],
+        failed=meta["failed"],
+        elapsed_ms=meta["elapsed_ms"],
+        cost_estimate_usd=meta["cost_estimate_usd"],
+        analysis=outcome.analysis is not None,
+    )
+    resp = DeliberationResponse(
+        question=request.prompt,
+        thread_id=request.thread_id,
+        compacted=compacted,
+        panel=panel,
+        analysis=outcome.analysis,
+        raw_answers=raw,
+        meta=meta,
+    )
+    resp.text = _render(resp)
+    return resp

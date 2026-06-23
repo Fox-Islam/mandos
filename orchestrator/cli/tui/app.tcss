@@ -1,0 +1,187 @@
+Screen {
+    background: #0B0B0B;
+    color: #F2C04B;
+}
+
+#dashboard {
+    layout: vertical;
+    width: 1fr;
+    height: 1fr;
+    background: #0B0B0B;
+    padding: 0 1;
+    border: double #F2C04B;
+    border-title-align: center;
+    border-title-color: #F2C04B;
+    border-title-style: bold;
+    border-subtitle-align: center;
+    border-subtitle-color: #8A6E2F;
+}
+
+#dashboard-body {
+    layout: horizontal;
+    height: 1fr;
+}
+
+#dashboard-nav {
+    width: 28;
+    min-width: 22;
+    height: 1fr;
+    background: #0B0B0B;
+    border: round #5C4520;
+    border-title-align: left;
+    border-title-color: #D6A93D;
+    padding: 0 1;
+}
+
+#dashboard-main {
+    width: 1fr;
+    height: 1fr;
+    border: round #5C4520;
+    border-title-align: left;
+    border-title-color: #D6A93D;
+    padding: 0 1;
+}
+
+.brand {
+    background: #0B0B0B;
+    color: #F2C04B;
+    text-style: bold;
+    height: 10;
+    padding: 0 1;
+    border: round #F2C04B;
+}
+
+#brand {
+    height: auto;
+    border: none;
+    padding: 0 1;
+}
+
+.meta {
+    color: #D6A93D;
+    height: 1;
+    padding: 0 1;
+}
+
+#harness {
+    height: 2;
+}
+
+#roster-title {
+    color: #F2C04B;
+    text-style: bold;
+    height: 1;
+}
+
+#roster {
+    height: 1fr;
+    min-height: 5;
+    background: #0B0B0B;
+    color: #F2C04B;
+}
+
+#roster > .datatable--header {
+    background: #0B0B0B;
+    color: #D6A93D;
+    text-style: bold;
+}
+
+#roster > .datatable--cursor {
+    background: #F2C04B;
+    color: #0B0B0B;
+}
+
+.status {
+    color: #F2C04B;
+    min-height: 3;
+    max-height: 6;
+}
+
+#actions-title {
+    color: #F2C04B;
+    text-style: bold;
+    height: 1;
+}
+
+#action-menu {
+    height: auto;
+    min-height: 5;
+    background: #0B0B0B;
+    color: #F2C04B;
+    margin: 1 0;
+}
+
+#action-menu > .option-list--option-highlighted {
+    background: #F2C04B;
+    color: #0B0B0B;
+}
+
+#member-form-title {
+    height: 3;
+}
+
+#member-form {
+    height: 1fr;
+    padding: 0 1;
+    overflow-y: auto;
+}
+
+.field-label {
+    color: #D6A93D;
+    height: 1;
+    width: auto;
+}
+
+.form-row {
+    height: auto;
+}
+
+#preset {
+    width: 2fr;
+}
+
+#preset-search {
+    width: 2fr;
+}
+
+#model-select {
+    width: 2fr;
+}
+
+#model-input {
+    width: 2fr;
+}
+
+#fetch-models,
+#test-connection,
+#save-member,
+#cancel {
+    width: auto;
+}
+
+#form-status {
+    min-height: 2;
+}
+
+#delete-member,
+#defaults-form,
+#roles-form,
+#harness-form {
+    height: 1fr;
+    padding: 0 1;
+    overflow-y: auto;
+}
+
+#delete-title,
+#defaults-title,
+#roles-title,
+#harness-title {
+    height: 3;
+}
+
+#delete-status,
+#defaults-status,
+#roles-status,
+#harness-status {
+    min-height: 2;
+}

@@ -1,0 +1,58 @@
+{
+  "models": [
+    {
+      "provider_key": "openai",
+      "id": "gpt-4o",
+      "display_name": "GPT-4o",
+      "context_window": 128000
+    },
+    {
+      "provider_key": "openai",
+      "id": "gpt-4o-mini",
+      "display_name": "GPT-4o mini",
+      "context_window": 128000
+    },
+    {
+      "provider_key": "openrouter",
+      "id": "openai/gpt-4o",
+      "display_name": "OpenAI GPT-4o",
+      "context_window": 128000
+    },
+    {
+      "provider_key": "deepseek",
+      "id": "deepseek-chat",
+      "display_name": "DeepSeek Chat",
+      "context_window": 64000
+    },
+    {
+      "provider_key": "mistral",
+      "id": "mistral-large-latest",
+      "display_name": "Mistral Large",
+      "context_window": 128000
+    },
+    {
+      "provider_key": "groq",
+      "id": "llama-3.3-70b-versatile",
+      "display_name": "Llama 3.3 70B Versatile",
+      "context_window": 128000
+    },
+    {
+      "provider_key": "vllm",
+      "id": "local",
+      "display_name": "Local model",
+      "context_window": 32768
+    },
+    {
+      "provider_key": "ollama",
+      "id": "local",
+      "display_name": "Local model",
+      "context_window": 32768
+    },
+    {
+      "provider_key": "lmstudio",
+      "id": "local",
+      "display_name": "Local model",
+      "context_window": 32768
+    }
+  ]
+}

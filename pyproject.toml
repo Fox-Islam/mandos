@@ -1,0 +1,61 @@
+[project]
+name = "imladris"
+version = "0.1.0"
+description = "Cross-harness multi-model deliberation (Fusion) MCP server."
+requires-python = ">=3.13"
+license = "MIT"
+license-files = ["LICENSE"]
+readme = "README.md"
+authors = [{ name = "Imladris contributors" }]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Operating System :: OS Independent",
+    "Intended Audience :: Developers",
+    "Environment :: Console",
+    "Topic :: Software Development",
+]
+dependencies = [
+    "fastmcp>=2.0,<3.0",
+    "openai>=2.0,<3.0",
+    "httpx>=0.27,<1.0",
+    "pydantic>=2.7,<3.0",
+    "PyYAML>=6.0,<7.0",
+    "structlog>=24.1",
+    "rich>=13.0",
+    "textual>=8.2,<9.0",
+]
+
+[tool.setuptools.package-data]
+"orchestrator.cli.tui" = ["*.tcss"]
+"orchestrator.data" = ["*.json"]
+
+[project.scripts]
+imladris = "orchestrator.cli.app:main"
+imladris-mcp = "orchestrator.mcp_server:main"
+
+[project.urls]
+Homepage = "https://github.com/FeanorsCodeSL/imladris"
+Repository = "https://github.com/FeanorsCodeSL/imladris"
+Issues = "https://github.com/FeanorsCodeSL/imladris/issues"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["orchestrator*"]
+exclude = ["orchestrator.tests*"]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+src = ["orchestrator"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["orchestrator/tests"]
+addopts = "-v"
