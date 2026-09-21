@@ -70,22 +70,22 @@
   <p class="note">Named for the Doomsman of the Valar, who pronounces judgement.</p>
 </header>
 
-<h2>What makes it different</h2>
+<h2>How it works</h2>
 
-<p>Most multi-model tools have another chat model read the panel and summarise it. That
-summary is one more generation: it smooths disagreement into agreement, and it reports
-its certainty as an adjective you cannot check.</p>
+<p>The usual design has a second chat model read the panel and write a summary. That
+summary has the same failure modes as the answers it is grading, and it states its
+confidence in words.</p>
 
-<p>Mandos puts the judging to <a href="https://github.com/Fox-Islam/typesafe-sdk-php">Jev</a>,
-TypeSafe's decision model, which answers named questions in fixed shapes — a probability
-for a yes/no, a label with a distribution, a level on a rubric. So a consensus is not
-asserted, it is derived: every panel member scored above a threshold, and the numbers
-come back with the finding.</p>
+<p>Mandos gives the judging to <a href="https://github.com/Fox-Islam/typesafe-sdk-php">Jev</a>,
+TypeSafe's decision model. Jev answers named questions in fixed shapes: a probability
+for a yes/no question, a label with a distribution for a choice, a level on a rubric for
+a score. A consensus in the output therefore means something specific. Every panel
+member scored above 0.6 on that claim, and the scores are returned with it.</p>
 
-<p>It also reports what the panel <em>lacked</em>. If answering well needed a row count,
-a query plan or a latency breakdown that nobody had, that is returned as a ranked list
-with a probability that having it would change the answer. Your model fetches what it
-can and asks again.</p>
+<p>The judge also reports what the panel lacked. When answering needs a row count or a
+query plan that none of the models had, that comes back as a ranked list, each item
+scored for how likely it is to change the answer. The calling model fetches what it can
+reach and asks again.</p>
 
 <h2>Install</h2>
 
@@ -111,14 +111,14 @@ on-prem or off-prem so you can see what leaves the machine.</p>
 
 <h2>Benchmark</h2>
 
-<p>The claim being tested is narrow: <strong>when a question cannot be answered well
-without a fact nobody has, does convening a panel beat asking one model?</strong></p>
+<p>The benchmark tests one thing. <strong>When answering correctly depends on a fact
+none of the models has, does a panel do better than a single model?</strong></p>
 
 <h3>Setup</h3>
 
-<p>16 questions, each underdetermined until one specific fact arrives, and each fact
-chosen so the plausible answer without it is wrong. Every answer is a forced Yes or No,
-graded against a key.</p>
+<p>16 questions. Each is underdetermined until one specific fact arrives, and each
+fact is chosen so that the plausible answer without it is wrong. Answers are a forced
+Yes or No and are graded against a key.</p>
 
 <pre><code>Q: Our dashboard runs SELECT COUNT(*) FROM organisations on every page
    load and we are considering replacing it with a counter table
@@ -129,13 +129,12 @@ Withheld: organisations contains 1,180 rows and grows by ~20 a month.
 
 Correct:  No</code></pre>
 
-<p>Four configurations. Within a tier, solo and panel share the same author model, so
-the only variable is the panel, the judge and the evidence loop.</p>
+<p>Within a tier, solo and panel use the same author model, so the panel, the judge
+and the evidence loop are the only things that vary.</p>
 
-<p><strong>The loop is closed.</strong> The withheld fact is supplied only when the
-judge actually asked for it, graded by Jev rather than by keyword. A judge that fails
-to ask gets no second chance, because a real caller cannot fetch what it was never
-told to fetch.</p>
+<p>The withheld fact is supplied only when the judge asked for it, and whether it asked
+is graded by Jev rather than by keyword matching. A judge that does not ask gets no
+second pass, which is the constraint a real caller works under.</p>
 
 <details>
 <summary>Prompts</summary>
@@ -200,9 +199,9 @@ Output STRICT JSON only.</code></pre>
   </tbody>
 </table>
 
-<p><strong>Solo</strong> is the author model alone. <strong>Panel</strong> is the full
-loop. <strong>Asked</strong> is how often the judge named the withheld fact, which
-gates whether the second pass happens at all.</p>
+<p><strong>Solo</strong> is the author model on its own. <strong>Panel</strong> is the
+full loop. <strong>Asked</strong> counts how often the judge named the withheld fact,
+which decides whether a second pass happens.</p>
 
 <h3>Conclusion</h3>
 
@@ -225,32 +224,31 @@ and lost 1 it should have had. Where the two disagreed:</p>
         <li><code>kafka_partitions</code> — budget</li>
 </ul>
 
-<p>The mechanism is the evidence request rather than the panel itself. Where the judge
-named the missing fact, the second pass had it and answered correctly. Where it did
-not ask, no second pass happened and the result rested on the first.</p>
+<p>The gain comes from the evidence request more than from the panel. Where the judge
+named the missing fact, the second pass had it and answered correctly. Where it did not
+ask, no second pass ran and the answer rested on the first.</p>
 
-<p>The frontier tier gained more because it started lower: its author answered
-11/16 alone against the budget author's 13/16.
-These questions are built so that thorough reasoning from incomplete premises argues
-itself into the trap, which a stronger model does more convincingly. The panel then
-recovered every one.</p>
+<p>The frontier tier gained more because its author started lower, at
+11/16 against the budget author's 13/16. These
+questions reward a model that stops and asks over one that reasons carefully from
+incomplete premises, and a stronger model builds a more convincing case for the wrong
+answer. Its panel recovered all of them.</p>
 
-<p>Total run cost was $3.15 across both tiers. The judge is a rounding
-error within that — a Jev call adjudicating a whole panel costs around $0.0002.</p>
+<p>The two tiers cost $3.15 in total. Jev is a small part of that, at
+roughly $0.0002 to adjudicate a whole panel.</p>
 
 <h3>Caveats</h3>
 
 <ul>
   <li>16 questions, one repeat. A one- or two-question gap is not a result.</li>
-  <li>The questions are built so that a missing fact decides the answer. That is the
-  mechanism being tested, and it flatters any method that asks for evidence. It says
-  nothing about questions where the panel has everything it needs and genuinely
-  disagrees.</li>
-  <li>Answers are binary and auto-graded. Nothing here measures the quality of an
-  explanation, which is what most people convene a panel for.</li>
+  <li>The questions are built so that a missing fact decides the answer, which
+  flatters any method that asks for evidence. They say nothing about questions where
+  the panel already has what it needs and disagrees anyway.</li>
+  <li>Answers are binary and graded automatically, so nothing here measures the
+  quality of an explanation.</li>
   <li>The frontier tier used <code>claude-opus-4.8</code> and <code>gpt-5.5</code>,
-  both a generation behind <code>claude-fable-5.1</code> and <code>gpt-5.6-sol</code>.
-  Read that row as "a strong panel", not "the strongest available".</li>
+  both a generation behind <code>claude-fable-5.1</code> and <code>gpt-5.6-sol</code>,
+  so that row shows a strong panel rather than the strongest available.</li>
   <li>The panel has no web access and cannot read your files. Evidence reaches it
   because the calling model gathers it.</li>
   <li>This is not <a href="https://openrouter.ai/docs/guides/routing/routers/fusion-router">OpenRouter
