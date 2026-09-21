@@ -74,6 +74,14 @@ Mandos measures.
   load would take the panel down to save the analysis.
 - **The judge sees what the panel saw.** `context` goes to the panellists *and* the
   judge. A judge scoring coverage against half a question scores the wrong thing.
+- **Mandos never runs a tool on the user's behalf.** Provider-executed tools are
+  passed through; a client-executed `function` tool is refused at config load. The
+  harness owns filesystem, shell and database access behind permission prompts, and
+  an MCP subprocess running tools to feed a third-party panel routes around them.
+  Local evidence reaches the panel because the *calling model* gathers it into
+  `context`.
+- **Anything captured from the conversation is redacted on write, not on read.** A
+  secret must never reach `~/.mandos/context/` in the first place.
 - **stdio only** — no Docker, no REST, no exposed port, no bearer token.
 - **Commit policy:** commit/stage only when the user explicitly asks; never add AI
   tools as authors or co-authors.
@@ -90,7 +98,8 @@ orchestrator/  (MCP stdio; stateless one-shot, local store for sessions)
         → panel.py  (concurrent fan-out + overall deadline; partial results)
             → providers/ (OpenAI-compatible: vLLM / OpenRouter / DeepSeek / …)
             → aggregate panel result (answers, latency, tokens, errors)
-        → judge/    (hybrid | matrix | verify | llm → one JudgeOutcome)
+        → transcript.py (optional: the conversation a harness hook captured)
+        → judge/    (hybrid → matrix → llm; one JudgeOutcome whichever ran)
             → extract.py  (hybrid only: an analyst proposes claims)
             → jev/        (noul / choice / score over {state, model, questions})
             → llm.py      (the generative analyst: shape "llm", and the fallback)

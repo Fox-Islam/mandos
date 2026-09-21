@@ -68,12 +68,21 @@ What differs:
 |---|---|---|
 | Judge | your outer model, generative | Jev, a calibrated decision model |
 | Analysis | asserted | measured, with the numbers returned |
-| Panel tools | `web_search` + `web_fetch` per panellist | none — panellists answer from what they know |
-| Panel input | your actual conversation | the `prompt`/`context` your model passes |
+| Panel tools | `web_search` + `web_fetch` per panellist | provider-executed tools passed through per provider; nothing client-side |
+| Panel input | your actual conversation | the conversation, via a capture hook, plus what your model passes |
 | Hosting | OpenRouter, one key | your own OpenAI-compatible providers, on-prem capable |
 
-The missing retrieval is the real gap and it is honest to say so: for a question that
-turns on current facts, Fusion's panel is grounded and this one is not.
+The remaining gap is local data. A panel member can be given provider-side web search,
+and a capture hook gives it the conversation, but nothing reaches your files, shell or
+database on its own — the harness holds that access behind a permission model that asks
+first, and an MCP subprocess running tools to feed a third-party panel would route
+around it. Local evidence gets to the panel because the calling model gathers it and
+passes it as `context`, where those prompts still apply.
+
+The judge closes the loop on that: `analysis.needs_evidence` reports what the panel
+found itself lacking, with how likely having it would change the answer. Rather than
+guessing what to include up front, the calling model reads what the panel actually
+needed, fetches it, and asks again.
 
 ## Install
 
@@ -116,6 +125,37 @@ secrets. `mandos refresh-catalog` updates the local models.dev cache. Sessions l
 in `~/.mandos/sessions/`; clear them with `mandos clear-sessions [thread_id]` or the
 `mandos_clear_sessions` tool.
 
+## Letting the panel see the conversation
+
+An MCP server sees only its tool arguments, so by default the panel is briefed on
+whatever your model retyped into `prompt` and `context`. The optional capture hook
+fixes that from the harness side: on each user prompt it writes the recent turns to
+`~/.mandos/context/` and exits — no API call, nothing blocking, no classifier deciding
+whether a turn "needs" a council. When your model chooses to convene one, the server
+reads that file.
+
+```bash
+mkdir -p ~/.mandos/hooks
+cp scripts/hooks/capture_transcript.py ~/.mandos/hooks/
+```
+
+```json
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {"hooks": [{"type": "command",
+                  "command": "python3 ~/.mandos/hooks/capture_transcript.py"}]}
+    ]
+  }
+}
+```
+
+Credentials are stripped before anything is written, the capture is bounded by turns
+and characters, and one older than an hour is ignored as belonging to a different task.
+`context.from_transcript: false` disables it; `use_conversation: false` blinds a single
+call. If your panel is off-prem, so is the conversation — see
+[`docs/architecture/05-security.md`](docs/architecture/05-security.md).
+
 ## Getting a Jev key
 
 Jev is served by TypeSafe directly and through OpenRouter's decisions endpoint. The
@@ -138,6 +178,8 @@ orchestrator/        the service package
   mcp_server.py      FastMCP server — tools: mandos, mandos_status, mandos_clear_sessions; council prompts
   panel.py           panel fan-out (partial results + degradation) and Markdown rendering
   jev/               the Jev client: wire format, question primitives, provider switch
+  transcript.py      conversation capture: redaction, bounds, staleness
+  attribution.py     labels OpenRouter calls as Mandos, and no other host
   judge/             the four shapes — hybrid, matrix, verify, llm — and the dispatcher
   model_catalog.py   offline-first model metadata, models.dev parser, cache helpers
   budget.py          advisory context-budget estimates
@@ -150,7 +192,7 @@ orchestrator/        the service package
   cli/               the mandos configurator: TUI, catalog, config ops, secrets, probe, harness/
   tests/             pytest suite (respx for HTTP, deterministic Jev fake)
 config/              mandos.example.yaml (illustrative providers, judge, presets, pricing)
-scripts/             install.sh, install.ps1, stdio smoke (Bash + PowerShell)
+scripts/             install.sh, install.ps1, stdio smoke, hooks/capture_transcript.py
 docs/architecture/   live architecture, judge shapes, configuration, security, deployment
 .agents/skills/      mandos-deliberate skill
 ```
@@ -178,9 +220,19 @@ MANDOS_SOURCE="$(pwd)" ./scripts/install.sh   # install/test from this checkout
 
 On Windows: `.\scripts\install.ps1 -Source .`
 
-No test calls Jev. `orchestrator/fakes.py` ships a deterministic fake that answers
-every question in the shape it was asked, so the suite measures the judge's reasoning
-from probabilities rather than Jev's accuracy.
+The default suite is offline: `orchestrator/fakes.py` ships a deterministic fake that
+answers every question in the shape it was asked, so the suite measures the judge's
+reasoning from probabilities rather than Jev's accuracy.
+
+```bash
+./.venv/bin/python -m pytest -m live      # needs a Jev key; a few thousandths of a cent
+```
+
+The live fixture pins the judge's reading of a fixed panel with a known correct answer.
+It exists because the support thresholds were measured rather than chosen, and one of
+them had to move when a live run showed the panel's sharpest disagreement vanishing on
+a third of attempts. Nothing offline catches that regressing — the fake answers
+whatever it is told to.
 
 ## Configuration
 

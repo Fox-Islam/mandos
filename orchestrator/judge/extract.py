@@ -23,6 +23,7 @@ from orchestrator.models import ChatRequest, RawAnswer, TokenUsage
 # keeping the *extraction* call small and the analysis readable, not about Jev's cost.
 MAX_CLAIMS = 12
 MAX_BLIND_SPOTS = 6
+MAX_MISSING = 6
 
 EXTRACT_SYSTEM = (
     "You read answers from a panel of independent models and list what is worth "
@@ -36,7 +37,14 @@ EXTRACT_SYSTEM = (
     "- blind_spots: things a careful reader would expect an answer to this question "
     "to address that no answer appears to address. At most "
     f"{MAX_BLIND_SPOTS}.\n"
-    'Output STRICT JSON only: {"claims": ["..."], "blind_spots": ["..."]}'
+    "- missing_evidence: specific information the answers did not have and would have "
+    "needed to answer well -- a file, a schema, a version, a measurement, a "
+    "requirement. Take these from what the answers say they are assuming, guessing at "
+    "or asking for. Name the thing that would settle it, not the topic: 'the schema "
+    "of the jobs table', not 'the database'. Omit anything already given. At most "
+    f"{MAX_MISSING}.\n"
+    'Output STRICT JSON only: {"claims": ["..."], "blind_spots": ["..."], '
+    '"missing_evidence": ["..."]}'
 )
 
 
@@ -44,13 +52,14 @@ EXTRACT_SYSTEM = (
 class Extraction:
     claims: list[str] = field(default_factory=list)
     blind_spots: list[str] = field(default_factory=list)
+    missing_evidence: list[str] = field(default_factory=list)
     error: str | None = None
     text: str = ""
     provider_id: str = ""
     usage: TokenUsage | None = None
 
     def is_empty(self) -> bool:
-        return not self.claims and not self.blind_spots
+        return not self.claims and not self.blind_spots and not self.missing_evidence
 
 
 async def extract_claims(
@@ -93,6 +102,7 @@ async def extract_claims(
 
     extraction.claims = _strings(parsed.get("claims"), MAX_CLAIMS)
     extraction.blind_spots = _strings(parsed.get("blind_spots"), MAX_BLIND_SPOTS)
+    extraction.missing_evidence = _strings(parsed.get("missing_evidence"), MAX_MISSING)
     if extraction.is_empty():
         extraction.error = "extraction proposed nothing to adjudicate"
     return extraction

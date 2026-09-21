@@ -130,6 +130,27 @@ def read_optional_score(answer: Any) -> float | None:
     return None
 
 
+def noul_confidence(answer: Any) -> float | None:
+    """How decisive a yes/no answer was, in [0, 1].
+
+    Jev reports a ``confidence`` for ``choice`` and ``score`` answers but **not** for
+    ``noul`` — verified against the live API. Every claim-level judgement is a noul, so
+    reading ``confidence`` straight off one always yields ``None`` and the field is
+    dead where it matters most.
+
+    A probability is its own confidence, though: 0.97 and 0.03 are both decisive
+    answers and 0.52 is not. This maps the distance from maximal uncertainty onto
+    [0, 1], so 0.5 -> 0.0 and either extreme -> 1.0. A reported confidence, if one ever
+    appears, still wins.
+    """
+    reported = read_confidence(answer)
+    if reported is not None:
+        return reported
+    if not isinstance(answer, dict) or not isinstance(answer.get("noul"), int | float):
+        return None
+    return abs(_clamp(float(answer["noul"])) - 0.5) * 2
+
+
 def read_confidence(answer: Any) -> float | None:
     """The model's confidence in its own answer, or ``None`` when it reported none.
 

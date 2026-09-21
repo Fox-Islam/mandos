@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import re
 import time
+from collections.abc import Awaitable, Callable
 
 import httpx
 
@@ -27,9 +28,12 @@ from orchestrator.sessions import (
     build_messages,
     estimate_messages_tokens,
     load_session,
+    prune_sessions,
     session_lock,
     write_session,
 )
+from orchestrator.transcript import capture_key, read_capture
+from orchestrator.transcript import render as render_turns
 
 SYSTEM = "Answer independently and thoroughly. Do not refer to other panelists."
 
@@ -155,6 +159,17 @@ def _provider_catalog_key(provider) -> str:
     return provider.catalog_key or provider.kind
 
 
+def _catalog_price(provider_desc, provider_id: str) -> tuple[float, float] | None:
+    """Per-million-token prices from the catalog for one provider, if it knows them."""
+    provider = provider_desc.get(provider_id)
+    if provider is None:
+        return None
+    metadata = resolve_model_metadata(_provider_catalog_key(provider), provider.model)
+    if metadata is None or metadata.input_cost is None:
+        return None
+    return metadata.input_cost, metadata.output_cost or 0.0
+
+
 def _context_window_for(provider) -> int | None:
     if provider.context_window:
         return provider.context_window
@@ -243,6 +258,15 @@ def _numbers(claim) -> str:
     return f" _({'; '.join(bits)})_" if bits else ""
 
 
+def _render_evidence(item) -> str:
+    """One thing the panel lacked. ``would_change`` leads the numbers because it is
+    what decides whether fetching it is worth a second pass."""
+    bits = [f"lacked {item.lacked:.2f}"]
+    if item.would_change is not None:
+        bits.insert(0, f"would change the answer {item.would_change:.2f}")
+    return f"- {item.item} _({'; '.join(bits)})_"
+
+
 def _render_contradictions(contradictions, index) -> list[str]:
     lines = ["\n**Contradictions**"]
     for i, c in enumerate(contradictions):
@@ -307,6 +331,9 @@ def _render_analysis(an) -> list[str]:
         lines.extend(
             f"- {b}{_numbers(index.get(('blind_spot', i)))}" for i, b in enumerate(an.blind_spots)
         )
+    if an.needs_evidence:
+        lines.append("\n**The panel was missing** (fetch and re-run if it matters)")
+        lines.extend(_render_evidence(e) for e in an.needs_evidence)
     if an.calibration:
         lines.extend(_render_matrix(an.calibration))
     if an.confidence_notes:
@@ -355,8 +382,37 @@ def _resolve_analysis_provider(analysis_id: str | None, provider_desc, client):
     return build_provider(descriptor, client), None
 
 
-def _compose_user(prompt: str, context: str | None) -> str:
-    return prompt if not context else f"{prompt}\n\nCONTEXT:\n{context}"
+def _compose_user(prompt: str, context: str | None, conversation: str = "") -> str:
+    """The panel's user message.
+
+    The conversation leads, because it is the setting the question was asked in; the
+    question and the caller's explicit context follow, because they are what is being
+    asked. Empty parts vanish, so a one-shot call with no capture composes exactly as
+    it always did.
+    """
+    parts = [conversation] if conversation else []
+    parts.append(prompt)
+    if context:
+        parts.append(f"CONTEXT:\n{context}")
+    return "\n\n".join(parts)
+
+
+def _conversation(request: DeliberateRequest, config) -> str:
+    """Whatever a harness hook captured for this session, or "" when there is none.
+
+    Never raises and never blocks: no capture, a stale one, or an unreadable one all
+    mean the panel is told what it would have been told before this feature existed.
+    """
+    wanted = request.use_conversation
+    if wanted is False or (wanted is None and not config.context.from_transcript):
+        return ""
+    turns = read_capture(
+        key=capture_key(),
+        max_age_s=config.context.max_age_s,
+    )
+    if not turns:
+        return ""
+    return render_turns(turns[-config.context.max_turns :])
 
 
 def _sent_input_text(chat_request: ChatRequest, fallback: str) -> str:
@@ -396,7 +452,7 @@ def _build_chat_requests(
     provider_desc,
     session: dict | None,
 ) -> tuple[dict[str, ChatRequest], dict[str, bool], dict[str, int]]:
-    user = _compose_user(request.prompt, request.context)
+    user = _compose_user(request.prompt, request.context, _conversation(request, config))
     max_tokens = request.max_tokens or config.defaults.max_tokens
     expected_output = max_tokens or 0
     temperature = (
@@ -435,6 +491,19 @@ def _build_chat_requests(
     return chat_requests, compacted_by_provider, session_estimates
 
 
+ProgressFn = Callable[[float, float, str], Awaitable[None]]
+
+
+async def _report(on_progress: ProgressFn | None, done: float, total: float, message: str) -> None:
+    """Best-effort progress. A host that cannot receive it must not fail the run."""
+    if on_progress is None:
+        return
+    try:
+        await on_progress(done, total, message)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 async def _call_provider(provider, chat_request: ChatRequest, deadline: float) -> ChatResult:
     try:
         remaining = deadline - time.monotonic()
@@ -453,7 +522,18 @@ async def _call_provider(provider, chat_request: ChatRequest, deadline: float) -
         )
 
 
-async def run_deliberation(request: DeliberateRequest, config) -> DeliberationResponse:
+async def run_deliberation(
+    request: DeliberateRequest,
+    config,
+    *,
+    on_progress: ProgressFn | None = None,
+) -> DeliberationResponse:
+    """Run one deliberation.
+
+    ``on_progress`` is called as each panel member lands and once the judge finishes.
+    A deliberation is a single blocking tool call that can take a minute and a half;
+    without this the host shows nothing at all while several models think.
+    """
     if request.thread_id:
         async with session_lock(request.thread_id):
             session_warning = None
@@ -463,7 +543,9 @@ async def run_deliberation(request: DeliberateRequest, config) -> DeliberationRe
                 session = {"thread_id": request.thread_id, "turns": []}
                 session_warning = f"session load failed: {type(exc).__name__}"
             apply_prior_answer(session, request.prior_answer)
-            response = await _run_deliberation(request, config, session=session)
+            response = await _run_deliberation(
+                request, config, session=session, on_progress=on_progress
+            )
             if session_warning:
                 response.meta["session_warning"] = session_warning
             append_turn(
@@ -480,8 +562,16 @@ async def run_deliberation(request: DeliberateRequest, config) -> DeliberationRe
                 response.meta["session_warning"] = (
                     f"{response.meta.get('session_warning')}; " if session_warning else ""
                 ) + f"session write failed: {type(exc).__name__}"
+            # Opportunistic: an abandoned thread ages out without anyone running a
+            # command. Failure here must never cost the caller their answer.
+            try:
+                pruned = prune_sessions(max_age_days=config.defaults.session_max_age_days)
+                if pruned:
+                    log.info("sessions.pruned", count=len(pruned))
+            except Exception:  # noqa: BLE001
+                pass
             return response
-    return await _run_deliberation(request, config)
+    return await _run_deliberation(request, config, on_progress=on_progress)
 
 
 async def _run_deliberation(
@@ -489,6 +579,7 @@ async def _run_deliberation(
     config,
     *,
     session: dict | None = None,
+    on_progress: ProgressFn | None = None,
 ) -> DeliberationResponse:
     if request.depth >= config.defaults.max_depth:
         return failure_response(
@@ -533,9 +624,18 @@ async def _run_deliberation(
         )
         compacted = any(compacted_by_provider.values())
 
-        results = await asyncio.gather(
-            *(_call_provider(p, chat_requests[p.id], deadline) for p in providers)
-        )
+        total = len(providers) + 1  # panel members, then the judge
+        landed = 0
+
+        async def _tracked(provider) -> ChatResult:
+            nonlocal landed
+            result = await _call_provider(provider, chat_requests[provider.id], deadline)
+            landed += 1
+            await _report(on_progress, landed, total, f"{provider.id} answered ({result.status})")
+            return result
+
+        await _report(on_progress, 0, total, f"asking {len(providers)} panel members")
+        results = await asyncio.gather(*(_tracked(p) for p in providers))
 
         panel = [
             PanelAnswer(
@@ -615,6 +715,7 @@ async def _run_deliberation(
         analysis_provider, judge_role_error = _resolve_analysis_provider(
             analysis_id, provider_desc, client
         )
+        await _report(on_progress, len(providers), total, f"judging ({config.judge.shape})")
         outcome = await run_judge(
             request.prompt,
             raw,
@@ -630,6 +731,7 @@ async def _run_deliberation(
             ),
             batch_size=config.judge.questions_per_call,
         )
+        await _report(on_progress, total, total, f"judge finished ({outcome.shape})")
         meta["judge_shape"] = outcome.shape
         meta["judge_fallback_from"] = outcome.fallback_from
         meta["jev_calls"] = outcome.jev_calls
@@ -643,7 +745,7 @@ async def _run_deliberation(
                 part for part in (judge_role_error, outcome.analysis_error) if part
             )
 
-        panel_input = _compose_user(request.prompt, request.context)
+        panel_input = _compose_user(request.prompt, request.context, _conversation(request, config))
         judge_input = build_judge_user(request.prompt, raw, request.context)
         cost_calls = [
             CostInput(
@@ -651,10 +753,17 @@ async def _run_deliberation(
                 r.usage,
                 input_text=_sent_input_text(chat_requests[r.provider_id], panel_input),
                 output_text=r.text,
+                catalog_price=_catalog_price(provider_desc, r.provider_id),
             )
             for r in ok_results
         ] + [
-            CostInput(pid, usage, input_text=judge_input, output_text=outcome.analysis_text)
+            CostInput(
+                pid,
+                usage,
+                input_text=judge_input,
+                output_text=outcome.analysis_text,
+                catalog_price=_catalog_price(provider_desc, pid),
+            )
             for pid, usage in outcome.usages
         ]
         _apply_cost(meta, cost_calls, config.pricing)

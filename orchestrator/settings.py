@@ -16,6 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from orchestrator.jev.client import DEFAULT_MODEL as JEV_DEFAULT_MODEL
 from orchestrator.jev.client import PROVIDERS as JEV_PROVIDERS
 from orchestrator.models import JudgeShape
+from orchestrator.transcript import DEFAULT_MAX_AGE_S
 
 Role = Literal["panel", "judge"]
 ContextWindowSource = Literal["override", "endpoint", "modelsdev", "unknown"]
@@ -57,15 +58,45 @@ class Defaults(BaseModel):
     budget_warning_ratio: float = Field(default=0.75, gt=0, lt=1)
     budget_error_ratio: float = Field(default=0.9, gt=0, le=1)
     session_max_turns: int = Field(default=12, ge=1)
+    # Sessions hold prompts and panel answers; keeping them forever is a slowly
+    # growing disclosure. 0 disables pruning.
+    session_max_age_days: float = Field(default=30, ge=0)
+
+
+class ContextConfig(BaseModel):
+    """What the panel is told about the conversation so far.
+
+    ``from_transcript`` reads the capture a harness hook leaves in
+    ``~/.mandos/context`` (see :mod:`orchestrator.transcript`) and prepends it to the
+    panel prompt, so the panel sees the discussion rather than the calling model's
+    retyped summary of it. Without the hook installed there is nothing to read and the
+    setting does nothing.
+
+    On by default: the panel already receives this conversation, filtered through the
+    calling model's judgement. What changes is completeness, so the bounds matter —
+    ``max_turns`` and ``max_chars`` cap it, credentials are stripped before anything is
+    written to disk, and a capture older than ``max_age_s`` is ignored as belonging to
+    a different task.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    from_transcript: bool = True
+    max_turns: int = Field(default=12, ge=1)
+    max_chars: int = Field(default=24_000, ge=100)
+    max_age_s: float = Field(default=DEFAULT_MAX_AGE_S, ge=0)
 
 
 class JudgeConfig(BaseModel):
     """The Jev judge.
 
-    ``shape`` decides what runs (see :mod:`orchestrator.judge`). ``llm`` needs no Jev
-    at all and falls through to the generative analyst named by
-    ``defaults.analysis_model``; every other shape calls Jev and falls back to that
-    analyst only if Jev cannot deliver.
+    ``shape`` decides what runs (see :mod:`orchestrator.judge`). The default is
+    ``hybrid``, the only shape that returns claim-level narrative — consensus,
+    contradictions, attributed insights — *and* the numbers behind it.
+
+    ``matrix`` is cheaper, marginally faster and needs no ``defaults.analysis_model``
+    at all, being the only shape with no generative model in the judging loop; it
+    returns agreement numbers and an outlier rather than a narrative. ``llm`` needs no
+    Jev. Every Jev shape falls back to the analyst only if Jev cannot deliver.
 
     ``api_key_env`` names the environment variable holding the key — never the key
     itself, and the name is not returned by ``safe_status``. Left unset it follows the
@@ -123,6 +154,11 @@ class ProviderDescriptor(BaseModel):
     enabled: bool = True
     api_key_env: str | None = None
     headers: dict[str, str] = Field(default_factory=dict)
+    # Provider-executed tools, passed through verbatim (OpenRouter: web_search,
+    # web_fetch). Client-executed "function" tools are rejected -- see
+    # _validate_provider_tools.
+    tools: list[dict[str, Any]] = Field(default_factory=list)
+    max_tool_calls: int | None = Field(default=None, ge=1)
     timeout_s: float = 60
     max_retries: int = 1
 
@@ -153,6 +189,33 @@ def _require_role(
         raise ValueError(
             f"{where} must reference an enabled provider with the '{role}' role: {pid!r}"
         )
+
+
+def _validate_provider_tools(enabled: dict[str, ProviderDescriptor]) -> None:
+    """Only tools the *provider* executes may be declared.
+
+    A ``{"type": "function"}`` tool is one the client is expected to run: the model
+    would answer with ``tool_calls`` and wait for a result Mandos has no way to supply,
+    so the panel member returns nothing useful.
+
+    Running them here would be worse than useless. The harness already has filesystem,
+    shell and database access behind a permission model that asks before it reads or
+    runs anything; an MCP subprocess quietly executing tools to feed a third-party
+    panel is exactly what that model exists to prevent. When a question depends on the
+    user's files or data, the *calling model* gathers it and passes it as ``context``.
+    """
+    for provider in enabled.values():
+        for tool in provider.tools:
+            kind = str(tool.get("type", ""))
+            if not kind:
+                raise ValueError(f"provider {provider.id!r} has a tool with no 'type'")
+            if kind == "function":
+                raise ValueError(
+                    f"provider {provider.id!r} declares a client-executed 'function' "
+                    "tool; Mandos only passes through provider-executed tools "
+                    "(e.g. 'openrouter:web_search'). Gather local data in the calling "
+                    "model and pass it as `context` instead."
+                )
 
 
 def _validate_enabled_secrets(enabled: dict[str, ProviderDescriptor]) -> None:
@@ -195,6 +258,7 @@ class MandosConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     defaults: Defaults = Field(default_factory=Defaults)
     judge: JudgeConfig = Field(default_factory=JudgeConfig)
+    context: ContextConfig = Field(default_factory=ContextConfig)
     providers: list[ProviderDescriptor]
     presets: dict[str, Preset] = Field(default_factory=dict)
     pricing: dict[str, Price] = Field(default_factory=dict)
@@ -208,6 +272,7 @@ class MandosConfig(BaseModel):
         if not enabled:
             raise ValueError("at least one provider must be enabled")
         _validate_enabled_secrets(enabled)
+        _validate_provider_tools(enabled)
         _warn_keyless_remote_providers(enabled)
         self._warn_unknown_pricing_keys()
         _require_role(enabled, self.defaults.analysis_model, "judge", "defaults.analysis_model")
@@ -300,6 +365,7 @@ class MandosConfig(BaseModel):
         return {
             "defaults": self.defaults.model_dump(),
             "judge": judge_view,
+            "context": self.context.model_dump(),
             "providers": [provider_view(p) for p in self.providers],
             "presets": {k: v.model_dump() for k, v in self.presets.items()},
             "pricing": {k: v.model_dump(by_alias=True) for k, v in self.pricing.items()},

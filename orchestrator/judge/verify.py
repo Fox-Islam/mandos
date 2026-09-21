@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from orchestrator.jev import JevClient, noul, qname, read_confidence, read_noul
+from orchestrator.jev import JevClient, noul, noul_confidence, qname, read_noul
 from orchestrator.judge.jev_common import DEFAULT_QUESTIONS_PER_CALL, ask_all, build_state
 from orchestrator.judge.outcome import JudgeOutcome
 from orchestrator.models import Analysis, CalibratedClaim, Calibration, RawAnswer
@@ -123,7 +123,7 @@ def _collect(analysis: Analysis, replies: dict[str, Any]) -> list[CalibratedClai
                 index=index,
                 claim=text,
                 holds=read_noul(reply),
-                confidence=read_confidence(reply),
+                confidence=noul_confidence(reply),
             )
         )
     return claims

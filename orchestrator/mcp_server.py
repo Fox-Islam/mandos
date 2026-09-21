@@ -14,6 +14,27 @@ from orchestrator.settings import load_config, load_env_file
 mcp = FastMCP("mandos")
 
 
+def _progress_reporter():
+    """Report progress to the host, when there is a host listening.
+
+    Taken from the ambient request rather than a ``ctx: Context`` parameter: adding one
+    makes FastMCP resolve this module's annotations eagerly, and with
+    ``from __future__ import annotations`` that fails on the ``Annotated`` field specs
+    the tool signature is built from. Fetching it here keeps the signature plain.
+    """
+    try:
+        from fastmcp.server.dependencies import get_context
+
+        ctx = get_context()
+    except Exception:  # noqa: BLE001
+        return None
+
+    async def report(done: float, total: float, message: str) -> None:
+        await ctx.report_progress(progress=done, total=total, message=message)
+
+    return report
+
+
 def _safe_error(exc: Exception) -> str:
     """Sanitize a request/config-load error before it crosses the tool boundary or is
     logged.
@@ -114,6 +135,28 @@ async def mandos(
         float | None,
         Field(default=None, gt=0, description="Overall deadline in seconds for the deliberation."),
     ] = None,
+    use_conversation: Annotated[
+        bool | None,
+        Field(
+            default=None,
+            description=(
+                "Whether the panel is shown the captured conversation (needs the "
+                "capture hook installed). None follows config; False keeps this one "
+                "call's panel blind to it."
+            ),
+        ),
+    ] = None,
+    depth: Annotated[
+        int,
+        Field(
+            default=0,
+            ge=0,
+            description=(
+                "Recursion depth. Pass depth+1 when one deliberation convenes another, "
+                "so the guard can cap the chain; leave at 0 for an ordinary call."
+            ),
+        ),
+    ] = 0,
 ) -> dict:
     """Convene a panel of independent AI models to deliberate on a hard question, then
     return a structured analysis (consensus, disagreements, gaps, unique insights,
@@ -128,7 +171,10 @@ async def mandos(
     sentence at 0.94. Check `meta.judge_fallback_from`: if it is set, the calibrated
     judge did not run and the analysis is an ordinary generative one.
 
-    The panel has no web access; put any facts it could not know in `context`.
+    The panel cannot reach your machine. Put facts it could not know in `context`, and
+    check `analysis.needs_evidence` in the result: it lists what the panel found itself
+    missing, so a second call with that evidence supplied is often worth more than
+    guessing what to include up front.
 
     You (the calling model) remain the final author: read the analysis, its numbers,
     and the raw answers, then write the answer.
@@ -146,13 +192,16 @@ async def mandos(
             temperature=temperature,
             reasoning_effort=reasoning_effort,
             timeout_s=timeout_s,
+            use_conversation=use_conversation,
+            depth=depth,
         )
         config = load_config()
     except (ValueError, FileNotFoundError) as exc:
         return failure_response(
             prompt, failure="unexpected_error", error=_safe_error(exc)
         ).model_dump()
-    return (await run_deliberation(req, config)).model_dump()
+
+    return (await run_deliberation(req, config, on_progress=_progress_reporter())).model_dump()
 
 
 @mcp.tool()
@@ -195,6 +244,11 @@ def council_prompt(question: str) -> str:
         "the claim consistently; the panel can be consistently wrong.\n"
         "- If `meta.judge_fallback_from` is set, the calibrated judge did not run — "
         "treat the analysis as one model's opinion and say so if it matters.\n"
+        "- `analysis.needs_evidence` lists what the panel said it lacked, with how "
+        "likely having it would change the answer. Where that is high and you can get "
+        "it — read the file, run the query, check the version — get it and call "
+        "`mandos` again with it in `context` and `depth=1`. Where you cannot, say so "
+        "in your answer rather than letting the panel's assumption stand as fact.\n"
         "- Preserve genuine contradictions and caveats — do not smooth them away.\n"
         "- Flag where the panel was uncertain or left blind spots unaddressed.\n"
         "- Attribute non-obvious or contested claims to their source where it helps "

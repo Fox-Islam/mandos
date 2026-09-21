@@ -76,6 +76,8 @@ class DeliberateRequest(BaseModel):
     temperature: float | None = Field(default=None, ge=0, le=2)
     reasoning_effort: ReasoningEffort | None = None
     timeout_s: float | None = Field(default=None, gt=0)
+    # None follows config; False keeps one call's panel blind to the conversation.
+    use_conversation: bool | None = None
     depth: int = 0
 
 
@@ -208,6 +210,23 @@ class Calibration(BaseModel):
     calls: int = 0
 
 
+class NeedsEvidence(BaseModel):
+    """Something the panel said it was missing, and how much it mattered.
+
+    Distinct from ``blind_spots``, which is "nobody addressed this". This is "nobody
+    *could* address this, because the information was not in front of them" — the only
+    one of the two a caller can act on, by fetching it and asking again.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    item: str
+    # P(the answers genuinely lacked this rather than merely omitting it).
+    lacked: float = Field(ge=0, le=1)
+    # P(having it would change the answer). Low means fetching it is not worth a rerun.
+    would_change: float | None = Field(default=None, ge=0, le=1)
+    confidence: float | None = Field(default=None, ge=0, le=1)
+
+
 class Analysis(BaseModel):
     model_config = ConfigDict(extra="forbid")
     consensus: list[str] = Field(default_factory=list)
@@ -215,6 +234,7 @@ class Analysis(BaseModel):
     partial_coverage: list[PartialCoverage] = Field(default_factory=list)
     unique_insights: list[UniqueInsight] = Field(default_factory=list)
     blind_spots: list[str] = Field(default_factory=list)
+    needs_evidence: list[NeedsEvidence] = Field(default_factory=list)
     confidence_notes: str = ""
     calibration: Calibration | None = None
 

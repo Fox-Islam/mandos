@@ -43,6 +43,11 @@ class ModelMetadata:
     id: str
     display_name: str | None = None
     context_window: int | None = None
+    # USD per million tokens. Carried so `cost_estimate_usd` can be right by default
+    # instead of relying on a hand-maintained `pricing:` block that silently reports
+    # every provider as unpriced when nobody fills it in.
+    input_cost: float | None = None
+    output_cost: float | None = None
     source: str = "seed"
 
     def as_dict(self) -> dict[str, Any]:
@@ -55,6 +60,10 @@ class ModelMetadata:
             data["display_name"] = self.display_name
         if self.context_window:
             data["context_window"] = self.context_window
+        if self.input_cost is not None:
+            data["input_cost"] = self.input_cost
+        if self.output_cost is not None:
+            data["output_cost"] = self.output_cost
         return data
 
 
@@ -101,13 +110,47 @@ def _metadata_from_dict(raw: dict[str, Any], *, source: str) -> ModelMetadata | 
         return None
     context = _coerce_context_window(raw)
     display = raw.get("display_name") or raw.get("name")
+    input_cost, output_cost = _coerce_costs(raw)
     return ModelMetadata(
         provider_key=provider_key.strip(),
         id=model_id.strip(),
         display_name=str(display).strip() if display else None,
         context_window=context,
+        input_cost=input_cost,
+        output_cost=output_cost,
         source=str(raw.get("source") or source),
     )
+
+
+def _coerce_costs(raw: dict[str, Any]) -> tuple[float | None, float | None]:
+    """Per-million-token prices, from whichever shape the source uses.
+
+    models.dev nests them under ``cost`` as USD per million; OpenRouter's own catalog
+    uses ``pricing`` as USD per token. Both are read, and the per-token form is scaled,
+    because a price that is out by a factor of a million is worse than no price at all.
+    """
+    nested = raw.get("cost")
+    if isinstance(nested, dict):
+        found = (_as_price(nested.get("input")), _as_price(nested.get("output")))
+        if found != (None, None):
+            return found
+    pricing = raw.get("pricing")
+    if isinstance(pricing, dict):
+        prompt, completion = _as_price(pricing.get("prompt")), _as_price(pricing.get("completion"))
+        if (prompt, completion) != (None, None):
+            return (
+                prompt * 1_000_000 if prompt is not None else None,
+                completion * 1_000_000 if completion is not None else None,
+            )
+    return _as_price(raw.get("input_cost")), _as_price(raw.get("output_cost"))
+
+
+def _as_price(value: Any) -> float | None:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed >= 0 else None
 
 
 def _coerce_context_window(raw: dict[str, Any]) -> int | None:

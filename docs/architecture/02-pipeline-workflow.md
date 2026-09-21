@@ -51,6 +51,15 @@ sequenceDiagram
 8. The host receives the analysis when available and all successful raw panel answers
    unconditionally. Session responses echo `thread_id` and `compacted`.
 
+## Progress
+
+A deliberation is one blocking tool call that can run to the full `timeout_s` with
+several models thinking at once. `run_deliberation` takes an `on_progress` callback and
+fires it as each panel member lands and again when the judge finishes; the MCP surface
+forwards those to the host as progress notifications. A host that cannot receive them
+loses nothing — reporting failures are swallowed rather than allowed to cost the
+caller their answer.
+
 ## The judge stage
 
 See [`03-judge-shapes.md`](03-judge-shapes.md) for what each shape asks and derives.

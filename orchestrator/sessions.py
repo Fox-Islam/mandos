@@ -17,6 +17,10 @@ from orchestrator.models import THREAD_ID_PATTERN, Analysis, ChatMessage, RawAns
 THREAD_ID_RE = re.compile(THREAD_ID_PATTERN)
 DEFAULT_SESSIONS_DIR = "~/.mandos/sessions"
 PERSISTED_TURNS_CAP = 200
+# Sessions used to accumulate until someone remembered to clear them. A council
+# session is a working file, not an archive, and every one of them holds prompts
+# and panel answers, so keeping them forever is a slowly growing disclosure.
+DEFAULT_SESSION_MAX_AGE_DAYS = 30
 _LOCKS: dict[str, asyncio.Lock] = {}
 
 
@@ -218,6 +222,35 @@ def append_turn(
     )
     if len(turns) > PERSISTED_TURNS_CAP:
         del turns[:-PERSISTED_TURNS_CAP]
+
+
+def prune_sessions(
+    *,
+    max_age_days: float = DEFAULT_SESSION_MAX_AGE_DAYS,
+    root: str | Path | None = None,
+    now: float | None = None,
+) -> list[str]:
+    """Delete sessions untouched for ``max_age_days``; return the thread ids removed.
+
+    Runs opportunistically on session writes, so an abandoned thread ages out without
+    anyone running a command. ``max_age_days <= 0`` disables it. Never raises: a
+    session that cannot be pruned is not worth failing a deliberation over.
+    """
+    if max_age_days <= 0:
+        return []
+    base = sessions_root(root)
+    if not base.exists():
+        return []
+    cutoff = (now if now is not None else time.time()) - max_age_days * 86400
+    pruned: list[str] = []
+    for path in base.glob("*.json"):
+        try:
+            if path.stat().st_mtime < cutoff:
+                path.unlink()
+                pruned.append(path.stem)
+        except OSError:
+            continue
+    return pruned
 
 
 def clear_sessions(*, thread_id: str | None = None, root: str | Path | None = None) -> int:

@@ -42,7 +42,7 @@ judge:
 | `model` | Jev model name. `jev-latest` resolves to the same build on both providers. |
 | `base_url` | Host override for a self-hosted or proxied endpoint. |
 | `api_key_env` | Env-var name holding the Jev key. Unset means it follows `provider` — `TYPESAFE_API_KEY` or `OPENROUTER_API_KEY` — so switching provider switches which key is read. Set it and yours is kept across a provider switch. |
-| `timeout_s` | Per-attempt timeout, bounded by the overall deadline. |
+| `timeout_s` | Per **attempt**, not per call (see providers). The overall deadline caps the total. |
 | `max_retries` | Extra attempts on 408/409/425/429, 5xx and transport errors. |
 | `questions_per_call` | Batch bound. Jev answers a batch in parallel, so this bounds one request body rather than cost. |
 
@@ -69,7 +69,9 @@ defaults:
 - `analysis_model` must reference an enabled provider with the `judge` role. It is the
   generative analyst: it proposes claims for `hybrid`, writes the analysis for
   `verify` and `llm`, and is the fallback whenever Jev cannot deliver.
-- `timeout_s` is the overall call deadline, shared by panel, analyst and Jev.
+- `timeout_s` is the overall call deadline, shared by panel, analyst and Jev. This is
+  the only true bound: per-provider `timeout_s` applies to each *attempt*, so a
+  provider retrying twice can spend `3 x timeout_s` plus backoff on its own.
 - `max_depth` is the recursion guard threshold.
 - `max_tokens` and `temperature` are sent to panel providers unless overridden.
 - `analysis_max_tokens` is the output ceiling for the analyst, which summarises the
@@ -78,6 +80,8 @@ defaults:
   green/amber/red status.
 - `session_max_turns` is the maximum stored history turns sent to session panel
   members before older turns are compacted.
+- `session_max_age_days` prunes sessions untouched for that long, opportunistically
+  on each session write. `0` disables it and they accumulate until cleared by hand.
 
 Removed legacy defaults `curation_model`, `anonymize`, and `include_raw` are
 ignored on load with a warning so old config files keep working.
@@ -113,8 +117,10 @@ Provider fields:
 | `roles` | Any combination of `panel` and `judge`; default is `[panel]`. |
 | `enabled` | Disabled providers are excluded from runtime resolution. |
 | `api_key_env` | Env-var name holding the provider key; value is never stored here. |
-| `headers` | Extra request headers. |
-| `timeout_s` | Per-provider timeout, bounded by the overall deadline. |
+| `headers` | Extra request headers. Overrides the OpenRouter attribution headers below. |
+| `tools` | Provider-executed tools, passed through verbatim (e.g. `[{"type": "openrouter:web_search"}]`). Client-executed `function` tools are refused at load. |
+| `max_tool_calls` | Cap on provider-side tool iterations, when the endpoint honours one. |
+| `timeout_s` | Per **attempt**, not per call: the real bound is `timeout_s x (max_retries + 1)` plus backoff. The overall deadline is what actually caps a deliberation. |
 | `max_retries` | Additional retries for 429, 5xx, and transport errors. |
 
 The legacy `curator` role is stripped on load.
@@ -135,8 +141,8 @@ Each preset must have a non-empty `panel` of 1-8 unique enabled panel providers.
 ## Tool Arguments
 
 `mandos(prompt, context, panel, preset, analysis_model, max_tokens,
-temperature, reasoning_effort, timeout_s, thread_id, prior_answer)` builds a
-`DeliberateRequest`.
+temperature, reasoning_effort, timeout_s, thread_id, prior_answer,
+use_conversation, depth)` builds a `DeliberateRequest`.
 
 Resolution precedence is:
 
@@ -173,9 +179,102 @@ the analysis, which is the wrong trade.
 Provider runtime failures are different again: they are recorded per panel answer and
 do not crash the batch.
 
+## Panel Tools
+
+A provider may declare tools its **endpoint** executes:
+
+```yaml
+providers:
+  - id: researcher
+    kind: openrouter
+    base_url: https://openrouter.ai/api/v1
+    model: google/gemini-3-flash-preview
+    tools:
+      - { type: "openrouter:web_search" }
+      - { type: "openrouter:web_fetch" }
+    max_tool_calls: 4
+```
+
+They are passed through verbatim and the provider runs them, so there is no tool loop
+in Mandos and no extra round trip: the panel member returns a finished answer that
+already used the tool.
+
+A client-executed `{"type": "function"}` tool is **refused at config load**. The model
+would reply with `tool_calls` waiting for a result Mandos cannot supply, and running
+such tools here would be worse than useless — the harness already has filesystem,
+shell and database access behind a permission model that asks before it reads or runs
+anything, and an MCP subprocess quietly executing tools to feed a third-party panel is
+what that model exists to prevent. When a question depends on the user's files or data,
+the **calling model** gathers it and passes it as `context`.
+
+## Conversation Context
+
+```yaml
+context:
+  from_transcript: true
+  max_turns: 12
+  max_chars: 24000
+  max_age_s: 3600
+```
+
+An MCP server sees only its tool arguments, so the panel is normally briefed on
+whatever the calling model retyped into `prompt` and `context`. A harness hook
+(`scripts/hooks/capture_transcript.py`) closes that gap: on each user prompt it writes
+the recent turns to `~/.mandos/context/<key>.json` and exits — no API call, nothing
+blocking, no classifier deciding whether the turn "needs" a council. When the model
+later chooses to convene one, the server reads that file and puts the conversation in
+front of the question.
+
+Install it in `~/.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {"hooks": [{"type": "command",
+                  "command": "python3 ~/.mandos/hooks/capture_transcript.py"}]}
+    ]
+  }
+}
+```
+
+Without the hook there is nothing to read and the setting does nothing. Per call,
+`use_conversation: false` keeps one panel blind to it.
+
+| Field | Description |
+|---|---|
+| `from_transcript` | Whether a capture is used at all. |
+| `max_turns` / `max_chars` | Bounds; the budget is spent from the newest turn backwards. |
+| `max_age_s` | A capture older than this belongs to a different task and is ignored. |
+
+Credentials matching common key, token and JWT shapes are stripped **before** anything
+is written, so a secret never reaches the file either. See `05-security.md` for what
+this changes about egress.
+
+## App Attribution
+
+Calls to an OpenRouter endpoint carry `X-Title: Mandos` and an `HTTP-Referer`, so
+OpenRouter's activity page attributes the spend instead of showing "Unknown". A
+council call fans out to several models at once, so an unattributed panel reads as
+unexplained spend from nowhere.
+
+Only OpenRouter endpoints get them — a provider is treated as OpenRouter when its
+`kind` is `openrouter` or its host is `openrouter.ai`. Sending a referer identifying
+the caller to every configured host would leak which tool is calling to endpoints that
+never asked for it.
+
+Two ways to change it, neither of which needs a config change:
+
+| Override | Effect |
+|---|---|
+| `MANDOS_APP_TITLE` / `MANDOS_APP_URL` | Rename globally. An empty value suppresses that one header. |
+| `X-Title` in a provider's `headers` | Rename for that provider; wins over the environment. |
+
+The Jev judge follows the same rule: labelled on `openrouter`, not on `typesafe`.
+
 ## Safe Status
 
-`mandos_status()` returns defaults, the judge block, providers, presets, pricing,
+`mandos_status()` returns defaults, the judge block, the context block, providers, presets, pricing,
 `requires_secret` flags, advisory budget thresholds, and per-provider green/amber/red
 budget estimates for the configured default output allowance. It never returns secret
 values or `api_key_env` names — including the judge's, which is reported only as

@@ -20,10 +20,14 @@ Whatever shape runs, the rules from the pipeline's golden rules hold: the judge
 analyses and never authors, a failure is recorded rather than raised, and the raw panel
 answers come back regardless so the host can always write the final answer.
 
-**Degradation.** A Jev shape that cannot produce an analysis falls back to ``llm`` when
-a judge-role chat provider is configured, recording both the original failure and
-``fallback_from``. ``matrix`` is the only shape that needs no chat provider at all, so
-it is also the only one that still works when the judge role is unconfigured.
+**Degradation.** Each shape has an ordered fallback chain, tried until one produces an
+analysis; ``fallback_from`` records what was asked for. ``hybrid`` falls to ``matrix``
+before ``llm``, because most of what stops it — an analyst that is unreachable, or that
+proposed nothing to adjudicate because the panel agreed — says nothing about whether
+Jev is reachable, and dropping straight to a generative judge throws away the
+calibration for no reason. Only when Jev itself is gone does anything fall to ``llm``.
+``matrix`` is the only shape that needs no chat provider at all, so it is also the only
+one that still works when the judge role is unconfigured.
 """
 
 from __future__ import annotations
@@ -41,7 +45,17 @@ from orchestrator.judge.llm import (
 from orchestrator.judge.outcome import JudgeOutcome
 from orchestrator.models import JudgeShape, RawAnswer
 
+# Ordered fallbacks per shape. ``hybrid`` keeps its footing inside Jev first: an
+# extraction that proposed nothing is a statement about the analyst, not about Jev.
+FALLBACKS: dict[JudgeShape, tuple[JudgeShape, ...]] = {
+    "hybrid": ("matrix", "llm"),
+    "matrix": ("llm",),
+    "verify": ("llm",),
+    "llm": (),
+}
+
 __all__ = [
+    "FALLBACKS",
     "ANALYSIS_SYSTEM",
     "DEFAULT_QUESTIONS_PER_CALL",
     "JudgeOutcome",
@@ -75,45 +89,40 @@ async def run_judge(
         outcome.analysis_error = "no successful panel answers to analyse"
         return outcome
 
-    error = await _run_shape(
-        shape,
-        question,
-        answers,
-        outcome,
-        deadline=deadline,
-        context=context,
-        jev_client=jev_client,
-        analysis_provider=analysis_provider,
-        max_tokens=max_tokens,
-        batch_size=batch_size,
-    )
-    if error:
-        outcome.analysis_error = error
+    errors: list[str] = []
+    for attempt in (shape, *FALLBACKS.get(shape, ())):
+        if attempt == "llm" and analysis_provider is None:
+            continue
+        error = await _run_shape(
+            attempt,
+            question,
+            answers,
+            outcome,
+            deadline=deadline,
+            context=context,
+            jev_client=jev_client,
+            analysis_provider=analysis_provider,
+            max_tokens=max_tokens,
+            batch_size=batch_size,
+        )
+        if error:
+            errors.append(f"{attempt}: {error}")
 
-    if outcome.analysis is not None:
-        # ``verify`` reaching here with an error means the analyst's findings stand but
-        # were never graded, which is the ``llm`` shape by another name. Say so.
-        if error and shape == "verify":
-            outcome.shape, outcome.fallback_from = "llm", "verify"
-        return outcome
+        if outcome.analysis is not None:
+            # ``verify`` reaching here with an error means the analyst's findings stand
+            # but were never graded, which is the ``llm`` shape by another name.
+            if error and attempt == "verify":
+                outcome.shape, outcome.fallback_from = "llm", shape
+                outcome.analysis_error = "; ".join(errors)
+                return outcome
+            outcome.shape = attempt
+            outcome.fallback_from = None if attempt == shape else shape
+            if errors:
+                outcome.analysis_error = "; ".join(errors)
+            return outcome
 
-    if shape == "llm" or analysis_provider is None:
-        return outcome
-
-    fallback = await run_deliberation_judge(
-        question,
-        answers,
-        analysis_provider,
-        deadline=deadline,
-        max_tokens=max_tokens,
-        context=context,
-    )
-    outcome.analysis = fallback.analysis
-    outcome.analysis_text = fallback.analysis_text
-    outcome.usages.extend(fallback.usages)
-    outcome.shape, outcome.fallback_from = "llm", shape
-    if fallback.analysis_error:
-        outcome.analysis_error = f"{error}; fallback judge also failed: {fallback.analysis_error}"
+    outcome.shape = shape
+    outcome.analysis_error = "; ".join(errors) or "no judge could produce an analysis"
     return outcome
 
 

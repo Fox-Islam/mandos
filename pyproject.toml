@@ -58,4 +58,9 @@ select = ["E", "F", "I", "UP", "B", "ASYNC"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["orchestrator/tests"]
-addopts = "-v"
+# Live tests call the real Jev API and cost a fraction of a cent; they are opt-in so
+# the default suite stays offline and free.
+addopts = "-v -m 'not live'"
+markers = [
+    "live: calls the real Jev API (needs a key; run with `-m live`)",
+]

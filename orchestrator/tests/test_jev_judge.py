@@ -127,16 +127,16 @@ async def test_hybrid_asks_one_question_per_claim_and_member_in_one_call():
 
     assert len(jev.calls) == 1
     questions = jev.calls[0]["questions"]
-    # 5 claims x (3 members + contested + standing) + 2 blind spots
-    assert len(questions) == 5 * 5 + 2
+    # 5 claims x (3 members + contested + standing), 3 readings per member, 2 gaps
+    assert len(questions) == 5 * 5 + 3 * 3 + 2
 
 
 async def test_batching_splits_wide_question_sets_across_calls():
     jev = FakeJevClient(_hybrid_script())
     await _run("hybrid", jev, _extractor(), batch_size=10)
 
-    assert len(jev.calls) == 3
-    assert sum(len(call["questions"]) for call in jev.calls) == 27
+    assert len(jev.calls) == 4
+    assert sum(len(call["questions"]) for call in jev.calls) == 36
 
 
 async def test_the_judge_is_shown_the_context_the_panel_saw():
@@ -233,15 +233,32 @@ async def test_a_shape_that_needs_jev_says_so_when_none_is_configured():
     assert "needs a Jev judge" in outcome.analysis_error
 
 
-async def test_hybrid_falls_back_when_the_extractor_returns_nothing_usable():
+async def test_a_failed_extraction_falls_back_to_matrix_not_to_a_generative_judge():
+    """An analyst that proposed nothing says nothing about whether Jev is reachable.
+    Dropping straight to a generative judge would throw away the calibration."""
     outcome = await _run(
         "hybrid",
         FakeJevClient(_hybrid_script()),
         FakeChatProvider("ja", text='{"notes": "no claims here"}'),
     )
-    assert outcome.shape == "llm"
+    assert outcome.shape == "matrix"
     assert outcome.fallback_from == "hybrid"
     assert "extraction proposed nothing" in outcome.analysis_error
+    assert outcome.analysis.calibration.shape == "matrix"
+
+
+async def test_hybrid_reaches_the_generative_judge_only_when_jev_is_gone():
+    from orchestrator.tests.helpers import ANALYSIS_JSON_IDS
+
+    outcome = await _run(
+        "hybrid",
+        FakeJevClient(error="HTTP 503: upstream"),
+        FakeChatProvider("ja", text=ANALYSIS_JSON_IDS),
+    )
+    assert outcome.shape == "llm"
+    assert outcome.fallback_from == "hybrid"
+    assert "503" in outcome.analysis_error
+    assert outcome.analysis.consensus == ["agree on X"]
 
 
 async def test_verify_keeps_the_analysis_when_verification_cannot_run():
@@ -270,10 +287,10 @@ async def test_jev_spend_and_call_counts_are_recorded():
     jev = FakeJevClient(_hybrid_script(), cost=0.0002)
     outcome = await _run("hybrid", jev, _extractor(), batch_size=10)
 
-    assert outcome.jev_calls == 3
-    assert outcome.jev_questions == 27
-    assert outcome.jev_cost == pytest.approx(0.0006)
-    assert outcome.jev_usage.input == 300
+    assert outcome.jev_calls == 4
+    assert outcome.jev_questions == 36
+    assert outcome.jev_cost == pytest.approx(0.0008)
+    assert outcome.jev_usage.input == 400
 
 
 async def test_a_contested_claim_survives_a_backer_sitting_on_the_threshold():
@@ -317,3 +334,66 @@ async def test_an_uncontested_claim_still_needs_real_backing():
     assert outcome.analysis.consensus == []
     assert outcome.analysis.contradictions == []
     assert [c.role for c in outcome.analysis.calibration.claims] == ["unsupported"]
+
+
+async def test_hybrid_reports_how_each_answer_reads_not_just_what_it_claims():
+    """The reading that lets an author discount a weak panellist instead of counting
+    it as a vote."""
+    script = _hybrid_script() | {
+        qname("hedging", "a"): {"score": 2.0},
+        qname("scope", "a"): {"score": 0.3},
+        qname("distinct", "a"): {"noul": 0.1},
+    }
+    outcome = await _run("hybrid", FakeJevClient(script), _extractor())
+
+    profiles = {p.id: p for p in outcome.analysis.calibration.per_answer}
+    assert set(profiles) == {"a", "b", "c"}
+    assert profiles["a"].hedging == 2.0
+    assert profiles["a"].scope == 0.3
+    assert profiles["a"].distinctive == 0.1
+
+
+def _evidence_extractor() -> FakeChatProvider:
+    return FakeChatProvider(
+        "ja",
+        text=json.dumps(
+            {
+                "claims": ["everyone agrees"],
+                "blind_spots": [],
+                "missing_evidence": [
+                    "the schema of the jobs table",
+                    "the deploy cadence",
+                    "something already in the prompt",
+                ],
+            }
+        ),
+    )
+
+
+async def test_the_panel_reports_what_it_was_missing():
+    """Distinct from blind spots: this is what the panel *could not* know, which is the
+    only half of the two a caller can act on."""
+    script = {qname("support", 0, pid): {"noul": 0.9} for pid in ("a", "b", "c")} | {
+        qname("contested", 0): {"noul": 0.05},
+        qname("standing", 0): {"score": 1.8},
+        qname("lacked", 0): {"noul": 0.95},
+        qname("wouldchange", 0): {"noul": 0.9},
+        qname("lacked", 1): {"noul": 0.8},
+        qname("wouldchange", 1): {"noul": 0.2},
+        qname("lacked", 2): {"noul": 0.1},
+        qname("wouldchange", 2): {"noul": 0.9},
+    }
+    outcome = await _run("hybrid", FakeJevClient(script), _evidence_extractor())
+
+    needs = outcome.analysis.needs_evidence
+    # The item the panel already had is dropped however much it would matter.
+    assert [e.item for e in needs] == ["the schema of the jobs table", "the deploy cadence"]
+    # Sorted so the one worth a second pass reads first.
+    assert needs[0].would_change == 0.9
+    assert needs[0].lacked == 0.95
+    assert needs[0].confidence == pytest.approx(0.9)
+
+
+async def test_nothing_missing_means_no_evidence_block():
+    outcome = await _run("hybrid", FakeJevClient(_hybrid_script()), _extractor())
+    assert outcome.analysis.needs_evidence == []

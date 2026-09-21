@@ -12,8 +12,33 @@ research questions, design/architecture trade-offs, "compare X and Y", expert
 critique, or anything where being wrong is costly. For quick lookups, answer
 directly — deliberation costs N panel calls plus a judge pass.
 
-The panel has **no web access**. Panellists answer from what they know, so for a
-question that turns on current or private facts, put those facts in `context`.
+Panellists answer from what they know unless a provider is configured with
+provider-side web search, and none of them can reach your machine. See *Gather before
+you convene*.
+
+## Gather before you convene
+
+The panel has no access to your machine. It cannot read files, run commands or query a
+database, and it never will — the harness holds that access behind a permission model
+that asks before it reads or runs anything, and an MCP server executing tools on its own
+to feed a third-party panel would route around it.
+
+So when a question depends on the user's code, data or environment, **you** gather it
+first and pass it as `context`:
+
+1. Read the files, run the query, check the versions — whatever the question turns on.
+2. Put the actual content in `context`, not a description of it. "The migration in
+   `db/0042.sql`" tells the panel nothing; the migration tells it everything.
+3. Say what you could not get. A panel that knows the schema is unavailable reasons
+   differently from one that assumes a shape.
+
+If the capture hook is installed, anything already in the conversation reaches the
+panel without being retyped, but files you have not yet read are not in the
+conversation either. Read first.
+
+For public information, a panel member can be configured with provider-side web search;
+check `mandos_status` to see whether yours has tools before assuming the panel can look
+anything up.
 
 ## Quick Start
 
@@ -54,6 +79,24 @@ the narrative field, so `("consensus", 0)` is the evidence for `consensus[0]`.
 **Numbers are evidence, not permission.** A 0.9 does not make a claim true; it means
 the panel's answers back it consistently. The panel can be consistently wrong.
 
+## When the panel says it was missing something
+
+`analysis.needs_evidence` lists what the panel found itself lacking, each with
+`lacked` (it genuinely did not have this, rather than merely not mentioning it) and
+`would_change` (having it would change the answer). The list is sorted by
+`would_change`, so the item worth acting on is first.
+
+This is the panel telling you what to fetch, which beats guessing up front:
+
+1. Read the top item. If `would_change` is high and you can get it — read the file, run
+   the query, check the version — get it.
+2. Call `mandos` again with it added to `context`, and `depth=1`.
+3. If you cannot get it, say so in your answer. An assumption the panel flagged should
+   not reach the reader as a fact.
+
+Do not loop more than once. A second pass with the decisive evidence is worth it; a
+third rarely is, and the depth guard caps the chain regardless.
+
 ## Workflow
 
 1. If `meta.ok == 0`, every panellist failed and the tool returns a clean
@@ -77,8 +120,8 @@ the panel's answers back it consistently. The panel can be consistently wrong.
 - `panel[]` — per-provider status metadata (id, status, latency, tokens). Answer text
   is in `raw_answers[]`; partial results are normal.
 - `analysis` — `consensus` / `contradictions` / `partial_coverage` / `unique_insights`
-  / `blind_spots` / `confidence_notes`, plus `calibration`. `null` if no judge shape
-  could produce one. Do not treat consensus as proof.
+  / `blind_spots` / `needs_evidence` / `confidence_notes`, plus `calibration`. `null`
+  if no judge shape could produce one. Do not treat consensus as proof.
 - `raw_answers[]` — all successful panel answers, returned unconditionally.
 - `meta` — timings, ok/failed counts, `judge_shape`, `judge_fallback_from`,
   `judge_error`, `jev_calls` / `jev_questions`, cost estimate, budget status, session

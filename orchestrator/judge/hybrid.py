@@ -19,11 +19,15 @@ from typing import Any
 from orchestrator.jev import (
     JevClient,
     noul,
+    noul_confidence,
     qname,
-    read_confidence,
     read_noul,
     read_score,
     score,
+)
+from orchestrator.judge.answer_profile import (
+    profile_questions,
+    read_profiles,
 )
 from orchestrator.judge.extract import Extraction
 from orchestrator.judge.jev_common import DEFAULT_QUESTIONS_PER_CALL, ask_all, build_state
@@ -34,6 +38,7 @@ from orchestrator.models import (
     Calibration,
     ClaimSupport,
     Contradiction,
+    NeedsEvidence,
     PartialCoverage,
     Position,
     RawAnswer,
@@ -53,6 +58,11 @@ CONTESTED = 0.5
 # Above this, a proposed blind spot is treated as real.
 BLIND_SPOT = 0.5
 
+# Above this, the panel genuinely lacked a piece of evidence rather than merely
+# omitting it. Reported, never acted on: whether to go and fetch it is the calling
+# model's decision, and it is the only party that can.
+LACKED = 0.5
+
 STANDING_RUBRIC = [
     "No answer supports this",
     "Some answers support this, weakly or in passing",
@@ -64,6 +74,7 @@ def build_questions(
     claims: list[str],
     blind_spots: list[str],
     answer_ids: list[str],
+    missing_evidence: list[str] = (),
 ) -> dict[str, dict[str, Any]]:
     """One question per (claim, panel member), plus two per claim and one per gap.
 
@@ -90,11 +101,29 @@ def build_questions(
             f"How well do the panel answers as a whole support this claim?\n\n{claim}",
             STANDING_RUBRIC,
         )
+    # How each answer reads, not just what it claims. A consensus is not a vote: an
+    # answer that hedges everything and addresses a third of the question should not
+    # weigh the same as one that commits and covers it, and the author cannot tell them
+    # apart from support scores alone. Measured live, a panel of three wrong models
+    # talked a correct author out of its answer -- this is the reading that would have
+    # let it discount them.
+    questions.update(profile_questions(answer_ids))
     for index, gap in enumerate(blind_spots):
         questions[qname("blind", index)] = noul(
             f"Is this genuinely left unaddressed by every one of the panel answers?\n\n{gap}",
             yes="No answer addresses it, even briefly",
             no="At least one answer addresses it",
+        )
+    for index, item in enumerate(missing_evidence):
+        questions[qname("lacked", index)] = noul(
+            f"Did the answers lack this information, rather than simply not mention it?\n\n{item}",
+            yes="An answer assumes it, guesses at it, or asks for it",
+            no="It is present in the question or context, or no answer needed it",
+        )
+        questions[qname("wouldchange", index)] = noul(
+            f"Would having this information change the answer to the question?\n\n{item}",
+            yes="A different value would lead to a different recommendation",
+            no="The answer holds either way",
         )
     return questions
 
@@ -116,7 +145,9 @@ async def run(
     back; ``None`` on success.
     """
     answer_ids = [answer.id for answer in answers]
-    questions = build_questions(extraction.claims, extraction.blind_spots, answer_ids)
+    questions = build_questions(
+        extraction.claims, extraction.blind_spots, answer_ids, extraction.missing_evidence
+    )
     if not questions:
         return "nothing to adjudicate"
 
@@ -212,7 +243,7 @@ def _assemble(
                 support=support,
                 contested=contested,
                 standing=standing,
-                confidence=read_confidence(contested_reply),
+                confidence=noul_confidence(contested_reply),
             )
         )
 
@@ -227,7 +258,7 @@ def _assemble(
                 index=len(blind_spots),
                 claim=gap,
                 holds=probability,
-                confidence=read_confidence(reply),
+                confidence=noul_confidence(reply),
             )
         )
         blind_spots.append(gap)
@@ -238,9 +269,38 @@ def _assemble(
         partial_coverage=partial_coverage,
         unique_insights=unique_insights,
         blind_spots=blind_spots,
+        needs_evidence=_needs_evidence(extraction, replies),
         confidence_notes=_notes(extraction, calibrated, unsupported),
-        calibration=Calibration(shape=shape, model=model, claims=calibrated),
+        calibration=Calibration(
+            shape=shape,
+            model=model,
+            claims=calibrated,
+            per_answer=read_profiles(answer_ids, replies),
+        ),
     )
+
+
+def _needs_evidence(extraction: Extraction, replies: dict[str, Any]) -> list[NeedsEvidence]:
+    """What the panel was missing, ranked by whether fetching it would matter.
+
+    Only items the answers genuinely lacked survive. Sorted by ``would_change`` so a
+    caller deciding whether a second pass is worth it reads the decisive one first.
+    """
+    found = []
+    for index, item in enumerate(extraction.missing_evidence):
+        reply = replies.get(qname("lacked", index))
+        lacked = read_noul(reply)
+        if lacked < LACKED:
+            continue
+        found.append(
+            NeedsEvidence(
+                item=item,
+                lacked=lacked,
+                would_change=read_noul(replies.get(qname("wouldchange", index))),
+                confidence=noul_confidence(reply),
+            )
+        )
+    return sorted(found, key=lambda e: e.would_change or 0, reverse=True)
 
 
 def _notes(extraction: Extraction, calibrated: list[CalibratedClaim], unsupported: int) -> str:

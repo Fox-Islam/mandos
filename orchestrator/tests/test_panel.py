@@ -538,3 +538,32 @@ async def test_every_branch_carries_the_jev_cost_key(monkeypatch):
         DeliberateRequest(prompt="q"), make_config(judge=JudgeConfig(shape="matrix"))
     )
     assert ok.meta["cost_basis"]["jev_usd"] == 0.0002
+
+
+async def test_progress_is_reported_per_panel_member_and_for_the_judge(monkeypatch):
+    """A deliberation is one blocking call that can run a minute and a half; without
+    this the host shows nothing at all while several models think."""
+    patch_providers(monkeypatch, all_ok_mapping())
+    seen: list[tuple[float, float, str]] = []
+
+    async def record(done, total, message):
+        seen.append((done, total, message))
+
+    await run_deliberation(DeliberateRequest(prompt="q"), make_config(), on_progress=record)
+
+    assert [s[1] for s in seen] == [3, 3, 3, 3, 3]  # 2 panel members + the judge
+    assert [s[0] for s in seen] == [0, 1, 2, 2, 3]
+    assert "asking 2 panel members" in seen[0][2]
+    assert "answered (ok)" in seen[1][2]
+    assert "judging" in seen[3][2]
+    assert "judge finished (llm)" in seen[4][2]
+
+
+async def test_a_host_that_cannot_receive_progress_does_not_lose_its_answer(monkeypatch):
+    patch_providers(monkeypatch, all_ok_mapping())
+
+    async def explode(done, total, message):
+        raise RuntimeError("no transport")
+
+    resp = await run_deliberation(DeliberateRequest(prompt="q"), make_config(), on_progress=explode)
+    assert resp.analysis is not None

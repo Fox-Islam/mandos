@@ -25,33 +25,20 @@ from orchestrator.jev import (
     read_choice,
     read_confidence,
     read_noul,
-    read_optional_score,
     read_probabilities,
     read_score,
     score,
 )
+from orchestrator.judge.answer_profile import profile_questions, read_profiles
 from orchestrator.judge.jev_common import DEFAULT_QUESTIONS_PER_CALL, ask_all, build_state
 from orchestrator.judge.outcome import JudgeOutcome
 from orchestrator.models import (
     Analysis,
-    AnswerProfile,
     Calibration,
     Outlier,
     PairAgreement,
     RawAnswer,
 )
-
-HEDGING_RUBRIC = [
-    "States its position plainly and commits to it",
-    "Commits, but qualifies the important parts",
-    "Avoids committing to a position at all",
-]
-
-SCOPE_RUBRIC = [
-    "Answers a small part of what was asked",
-    "Answers most of what was asked",
-    "Answers everything that was asked",
-]
 
 PANEL_AGREEMENT_RUBRIC = [
     "The answers reach incompatible conclusions",
@@ -72,20 +59,7 @@ def build_questions(answer_ids: list[str]) -> dict[str, dict[str, Any]]:
             yes="Someone acting on either answer would do the same thing",
             no="They point to different conclusions, or one rules out what the other advises",
         )
-    for provider_id in answer_ids:
-        questions[qname("hedging", provider_id)] = score(
-            f"How much does the answer from '{provider_id}' hedge?", HEDGING_RUBRIC
-        )
-        questions[qname("scope", provider_id)] = score(
-            f"How much of the question does the answer from '{provider_id}' address?",
-            SCOPE_RUBRIC,
-        )
-        questions[qname("distinct", provider_id)] = noul(
-            f"Does the answer from '{provider_id}' make a substantive point that no "
-            "other answer makes?",
-            yes="It raises something the others leave out entirely",
-            no="Everything it raises appears in at least one other answer",
-        )
+    questions.update(profile_questions(answer_ids))
     if len(answer_ids) > 1:
         questions["outlier"] = choice("Which answer is least like the others?", list(answer_ids))
         questions["panel_agreement"] = score(
@@ -139,15 +113,7 @@ def _assemble(answer_ids: list[str], replies: dict[str, Any], *, model: str) -> 
             )
         )
 
-    per_answer = [
-        AnswerProfile(
-            id=provider_id,
-            hedging=read_optional_score(replies.get(qname("hedging", provider_id))),
-            scope=read_optional_score(replies.get(qname("scope", provider_id))),
-            distinctive=read_noul(replies.get(qname("distinct", provider_id))),
-        )
-        for provider_id in answer_ids
-    ]
+    per_answer = read_profiles(answer_ids, replies)
 
     outlier = None
     if "outlier" in replies:

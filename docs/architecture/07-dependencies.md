@@ -36,7 +36,7 @@ Docker/image tooling, and the curator/anonymization implementation.
 
 | Destination | When | Data |
 |---|---|---|
-| Panel providers | Concurrently, once per selected panel member | System prompt, user prompt, optional context, model knobs. |
+| Panel providers | Concurrently, once per selected panel member | System prompt, the captured conversation when enabled, user prompt, optional context, model knobs, and any provider-executed tools declared. |
 | Generative analyst | For shapes `hybrid`, `verify`, `llm`, and on any Jev fallback | Question, context, and all successful raw panel answers. |
 | Jev | For shapes `hybrid`, `matrix`, `verify` | A `state` of question + context + answers by provider id, and a batch of named questions. One call unless the batch exceeds `judge.questions_per_call`. |
 
@@ -64,3 +64,9 @@ ruff check orchestrator
 ruff format --check orchestrator
 pytest
 ```
+
+`pytest` is offline. The live fixture in `orchestrator/tests/test_jev_live.py` runs
+only under `pytest -m live` and needs a Jev key; it pins the judge's reading of a
+fixed panel, including the support threshold that a live measurement forced to
+move. Nothing offline can catch that regressing, because the fake answers whatever
+it is told to.

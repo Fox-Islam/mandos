@@ -15,6 +15,18 @@ class CostInput:
     usage: TokenUsage
     input_text: str = ""
     output_text: str = ""
+    # Per-million-token prices from the model catalog, used when the config names no
+    # price for this provider. Configured pricing is user truth and still wins.
+    catalog_price: tuple[float, float] | None = None
+
+
+def _prices(configured, catalog) -> tuple[float | None, float | None, str]:
+    """Configured pricing is user truth and wins; the catalog fills the gaps."""
+    if configured:
+        return configured.input, configured.output, "config"
+    if catalog:
+        return catalog[0], catalog[1], "catalog"
+    return None, None, "none"
 
 
 def estimate_cost(calls: Iterable[CostInput], pricing) -> dict:
@@ -30,8 +42,9 @@ def estimate_cost(calls: Iterable[CostInput], pricing) -> dict:
     priced = unpriced = estimated = 0
     by_provider: dict[str, dict] = {}
     for call in calls:
-        price = pricing.get(call.provider_id) if pricing else None
-        if not price:
+        configured = pricing.get(call.provider_id) if pricing else None
+        price_in, price_out, price_source = _prices(configured, call.catalog_price)
+        if price_in is None:
             unpriced += 1
             by_provider.setdefault(call.provider_id, {"usd": 0.0, "usage_source": "unpriced"})
             continue
@@ -43,11 +56,12 @@ def estimate_cost(calls: Iterable[CostInput], pricing) -> dict:
             out_tok = estimate_text_tokens(call.output_text)
             source = "estimated"
             estimated += 1
-        usd = (in_tok / 1_000_000) * price.input + (out_tok / 1_000_000) * price.output
+        usd = (in_tok / 1_000_000) * price_in + (out_tok / 1_000_000) * (price_out or 0.0)
         total += usd
         entry = by_provider.setdefault(call.provider_id, {"usd": 0.0, "usage_source": source})
         entry["usd"] = round(entry["usd"] + usd, 6)
         entry["usage_source"] = source
+        entry["price_source"] = price_source
     return {
         "usd": round(total, 6),
         "advisory": True,

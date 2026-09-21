@@ -45,6 +45,11 @@ back into the harness model, and it does not synthesize final prose.
   configurator path, while runtime deliberation stays cache/seed-only.
   `orchestrator/budget.py` estimates advisory context pressure for runtime metadata,
   `mandos_status`, and the dashboard gauge.
+- `orchestrator/transcript.py` reads and writes the conversation capture a harness
+  hook leaves in `~/.mandos/context/`, redacting credentials on write and bounding it
+  by turns and characters, so the panel can be briefed on the discussion rather than on
+  the calling model's retyped summary of it.
+- `orchestrator/attribution.py` labels OpenRouter calls as Mandos, and no other host.
 - `orchestrator/sessions.py` stores local council-session history under
   `~/.mandos/sessions/<thread_id>.json`, reconstructs OpenAI `messages[]`, and
   compacts older turns when needed.

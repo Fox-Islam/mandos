@@ -21,6 +21,7 @@ from typing import Any
 
 import httpx
 
+from orchestrator.attribution import attribution_headers
 from orchestrator.models import TokenUsage
 
 # Retried for the same reasons the chat provider retries them: transient by nature and
@@ -171,6 +172,7 @@ class JevClient:
                     "Content-Type": "application/json",
                     "Accept": "application/json",
                     "Authorization": f"Bearer {self.api_key}",
+                    **attribution_headers(self._base_url, self.provider),
                     **self.headers,
                 },
             )

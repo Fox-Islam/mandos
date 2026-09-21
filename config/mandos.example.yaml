@@ -27,6 +27,16 @@ defaults:
   budget_warning_ratio: 0.75
   budget_error_ratio: 0.90
   session_max_turns: 12
+  # Prune sessions untouched for this long; 0 keeps them forever.
+  session_max_age_days: 30
+
+# What the panel is told about the conversation so far. Needs the capture hook
+# (scripts/hooks/capture_transcript.py); without it there is nothing to read.
+context:
+  from_transcript: true
+  max_turns: 12
+  max_chars: 24000
+  max_age_s: 3600
 
 providers:
   - id: local
@@ -61,13 +71,23 @@ providers:
     base_url: https://openrouter.ai/api/v1
     model: google/gemini-2.5-pro
     api_key_env: OPENROUTER_API_KEY
-    headers: { "X-Title": "Mandos" }
+    # OpenRouter calls are labelled "Mandos" automatically; set X-Title here only to
+    # override it for this provider.
     roles: [panel]
+    # Tools the *provider* runs. A client-executed "function" tool is refused at load:
+    # local data reaches the panel by the calling model gathering it into `context`,
+    # where the harness's permission prompts still apply.
+    tools:
+      - { type: "openrouter:web_search" }
+      - { type: "openrouter:web_fetch" }
+    max_tool_calls: 4
 
 presets:
   quality:    { panel: [local, minimax, deepseek, or-gemini], analysis: local }
   local-only: { panel: [local], analysis: local }
 
+# Optional. Prices come from the model catalog when a provider is not listed here,
+# so this block is for overriding what the catalog says, not for filling it in.
 pricing:
   deepseek:  { in: 0.27, out: 1.10 }
   or-gemini: { in: 1.25, out: 5.00 }

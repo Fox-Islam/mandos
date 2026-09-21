@@ -9,6 +9,7 @@ from typing import Any
 import httpx
 from openai import APIConnectionError, APIStatusError, AsyncOpenAI
 
+from orchestrator.attribution import attribution_headers
 from orchestrator.models import ChatRequest, ChatResult, TokenUsage
 from orchestrator.settings import ProviderDescriptor
 
@@ -53,7 +54,11 @@ class OpenAiCompatibleProvider:
             base_url=self.descriptor.base_url,
             api_key=self.descriptor.api_key or "none",
             max_retries=0,
-            default_headers=dict(self.descriptor.headers),
+            # Attribution first so a provider's own headers can override it.
+            default_headers={
+                **attribution_headers(self.descriptor.base_url, self.descriptor.kind),
+                **self.descriptor.headers,
+            },
             http_client=self.client,
         )
 
@@ -90,8 +95,17 @@ class OpenAiCompatibleProvider:
             kwargs["max_tokens"] = request.max_tokens
         if request.temperature is not None:
             kwargs["temperature"] = request.temperature
+        extra: dict[str, Any] = {}
         if request.reasoning_effort:
-            kwargs["extra_body"] = {"reasoning_effort": request.reasoning_effort}
+            extra["reasoning_effort"] = request.reasoning_effort
+        if self.descriptor.tools:
+            # Provider-executed only (config rejects the rest), so there is no tool
+            # loop here: the provider runs them and returns a finished message.
+            kwargs["tools"] = list(self.descriptor.tools)
+            if self.descriptor.max_tool_calls is not None:
+                extra["max_tool_calls"] = self.descriptor.max_tool_calls
+        if extra:
+            kwargs["extra_body"] = extra
         return kwargs
 
     def _build_messages(self, request: ChatRequest) -> list[dict[str, Any]]:
@@ -139,11 +153,23 @@ class OpenAiCompatibleProvider:
         choice = completion.choices[0] if completion.choices else None
         answer = choice.message if choice else None
         usage = completion.usage
+        text = (answer.content or "") if answer else ""
+        finish_reason = choice.finish_reason if choice else None
+        if finish_reason == "tool_calls" and not text:
+            # The model asked us to run something. Config forbids client-executed
+            # tools, so this means the endpoint did not execute one it advertised --
+            # a recorded error, not a silent empty answer.
+            return self._err(
+                "provider returned tool_calls but ran no tool; only provider-executed "
+                "tools are supported",
+                started,
+                attempts=attempts,
+            )
         return ChatResult(
             provider_id=self.id,
             model=completion.model or self.descriptor.model,
-            text=(answer.content or "") if answer else "",
-            finish_reason=choice.finish_reason if choice else None,
+            text=text,
+            finish_reason=finish_reason,
             usage=TokenUsage(
                 input=usage.prompt_tokens if usage else 0,
                 output=usage.completion_tokens if usage else 0,

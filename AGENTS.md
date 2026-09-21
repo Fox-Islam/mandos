@@ -78,9 +78,14 @@ script the whole reply — the fake's simulated yes at 0.75 would otherwise make
 claim look supported.
 
 Keep degraded cases covered: provider timeout, partial panel failure, `ok==0`
-short-circuit, Jev unreachable (falls back, `meta.judge_fallback_from` set), Jev
-unreachable with no analyst (`analysis: null`), a partially failed Jev batch,
-malformed judge JSON, and session store-failure degradation. The generative judge runs
+short-circuit, a failed extraction (falls to `matrix`, not to `llm`), Jev unreachable
+(falls all the way to `llm`, `meta.judge_fallback_from` set), Jev unreachable with no
+analyst (`analysis: null`), a partially failed Jev batch, malformed judge JSON,
+a missing or stale conversation capture, and session store-failure degradation.
+
+`pytest` is offline. `pytest -m live` runs `test_jev_live.py` against the real API
+and needs a key; it pins thresholds that were measured rather than chosen, so change
+them only with a live run to back it up. The generative judge runs
 at `temperature: 0`; snapshot the schema, not the wording.
 
 ## Commit & Pull Request Guidelines

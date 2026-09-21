@@ -5,6 +5,7 @@ from orchestrator.jev.factory import build_jev_client
 from orchestrator.jev.questions import (
     choice,
     noul,
+    noul_confidence,
     qname,
     qparts,
     read_choice,
@@ -24,6 +25,7 @@ __all__ = [
     "build_jev_client",
     "choice",
     "noul",
+    "noul_confidence",
     "qname",
     "qparts",
     "read_choice",

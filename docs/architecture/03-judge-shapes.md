@@ -19,7 +19,7 @@ the judge produced nothing.
 
 | shape | generative calls | Jev calls | narrative | calibration |
 |---|---|---|---|---|
-| `hybrid` | 1 (claim extraction) | 1+ | derived from Jev's numbers | `claims[]` |
+| `hybrid` | 1 (claim extraction) | 1+ | derived from Jev's numbers | `claims[]`, `per_answer[]` |
 | `matrix` | 0 | 1+ | none | `agreement[]`, `per_answer[]`, `outlier`, `panel_agreement` |
 | `verify` | 1 (the analysis) | 1+ | written by the analyst | `claims[]` (one `holds` per finding) |
 | `llm` | 1 (the analysis) | 0 | written by the analyst | `null` |
@@ -35,7 +35,11 @@ measured" and "measured as nothing" stay distinguishable.
 2. One Jev call asks, for each claim: *does the answer from `<id>` support this?*
    (once per panel member), *do the answers genuinely disagree about this?*, and a
    three-level rubric for how well the panel as a whole supports it. Each proposed
-   blind spot gets *is this genuinely left unaddressed by every answer?*
+   blind spot gets *is this genuinely left unaddressed by every answer?* The same call
+   also reads each answer for hedging, scope and distinctiveness, so the author can
+   tell a claim backed by three committed, complete answers from one backed by three
+   evasive, partial ones. Support scores alone cannot distinguish them, and a measured
+   run showed a panel of three wrong models talking a correct author out of its answer.
 3. The narrative is **derived** from those probabilities:
 
 | outcome | condition |
@@ -46,6 +50,7 @@ measured" and "measured as nothing" stay distinguishable.
 | `partial_coverage[]` | some but not all members scored ≥ 0.6 |
 | *(dropped from the narrative)* | no member scored ≥ 0.6 — kept as `role: "unsupported"` |
 | `blind_spots[]` | unaddressed ≥ 0.5 |
+| `needs_evidence[]` | lacked ≥ 0.5, sorted by how much having it would change the answer |
 
 Checked in that order, so a contested claim is settled before the backing tests run.
 
@@ -58,6 +63,24 @@ A contested claim is split at the **lower** threshold — see
 
 An `unsupported` claim measures the *extraction* pass, not the panel — the analyst
 proposed something no answer turned out to back. `confidence_notes` reports the count.
+
+### needs_evidence
+
+The extraction pass also lists information the answers did not have and would have
+needed — a file, a schema, a version, a measurement — taken from what they say they are
+assuming, guessing at or asking for. Jev then settles two questions per item: *did the
+answers lack this, rather than simply not mention it?* and *would having it change the
+answer?*
+
+This is deliberately **not** `blind_spots`. A blind spot is something nobody addressed;
+this is something nobody *could* address, because it was not in front of them. Only the
+second is actionable, and only by the caller — the harness is the one party that can
+read the file or run the query. So it is reported as a field and never as a failure:
+the first pass still returns a real analysis, and whether to fetch and call again is the
+calling model's decision, capped by the `depth` guard when it chains.
+
+`would_change` is what decides whether a second pass is worth it, so the list is sorted
+by it.
 
 ### matrix
 
@@ -131,6 +154,9 @@ Uncontested claims still need real backing. Both cases are pinned by tests.
   "partial_coverage": [{ "ids": ["provider-id"], "point": "string" }],
   "unique_insights": [{ "id": "provider-id", "insight": "string" }],
   "blind_spots": ["string"],
+  "needs_evidence": [
+    { "item": "string", "lacked": 0.95, "would_change": 0.9, "confidence": 0.9 }
+  ],
   "confidence_notes": "string",
   "calibration": {
     "shape": "hybrid",
@@ -157,6 +183,12 @@ Uncontested claims still need real backing. Both cases are pinned by tests.
 }
 ```
 
+`confidence` on a claim is **derived**, not reported: Jev returns a `confidence` for
+`choice` and `score` answers but not for `noul`, and every claim-level judgement is a
+noul. A probability is its own confidence, so the distance from maximal uncertainty is
+mapped onto [0, 1] — 0.5 becomes 0.0, either extreme becomes 1.0. A reported
+confidence, where one exists, still wins.
+
 `role` and `index` point back into the narrative field a claim produced or verified
 (`consensus[0]`, `contradictions[2]`, …), so an author joins prose to evidence without
 matching on claim text.
@@ -178,12 +210,25 @@ The tool response around it:
 
 ## Degradation
 
+Each shape has an ordered fallback chain, tried until one produces an analysis:
+
+| shape | chain |
+|---|---|
+| `hybrid` | `matrix`, then `llm` |
+| `matrix` | `llm` |
+| `verify` | `llm` (its analysis survives ungraded) |
+
+`hybrid` falls to `matrix` first on purpose. Most of what stops it — an analyst that is
+unreachable, or that proposed nothing because the panel agreed — says nothing about
+whether Jev is reachable, and dropping straight to a generative judge would throw away
+the calibration for no reason. Only when Jev itself is gone does anything reach `llm`.
+
 | Situation | Response |
 |---|---|
-| Jev errors, times out or is unkeyed | fall back to `llm`; `judge_fallback_from` set |
+| Jev errors, times out or is unkeyed | fall back through the chain to `llm`; `judge_fallback_from` set |
 | Jev fails and no analyst is configured | `analysis: null`, `meta.judge_error` |
 | A batch partially fails | the analysis stands on the answers that came back; a missing answer reads as maximal uncertainty; `meta.judge_error` says so |
-| `hybrid` extraction returns nothing usable | fall back to `llm` |
+| `hybrid` extraction returns nothing usable | fall back to `matrix`, which needs no analyst |
 | `verify` verification fails | the analyst's analysis survives with `calibration: null`; shape reports as `llm` |
 | The `llm` judge returns malformed JSON | `meta.judge_error`, `analysis: null` |
 
