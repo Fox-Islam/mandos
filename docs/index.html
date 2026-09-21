@@ -67,7 +67,13 @@
   <p class="lede">A multi-model deliberation MCP server. A panel of models answers your
   question, a calibrated decision model judges what they established, and your own
   model writes the answer.</p>
-  <p class="note">Named for the Doomsman of the Valar, who pronounces judgement.</p>
+  <p class="note">The approach is OpenRouter's. Their
+  <a href="https://openrouter.ai/blog/announcements/fusion-beats-frontier/">Fusion
+  router</a> showed that a panel of models with an analysis stage beats the frontier
+  models it is built from, and
+  <a href="https://openrouter.ai/docs/guides/routing/routers/fusion-router">documents
+  how</a>. Mandos runs that shape as a local MCP server and replaces the analysis stage
+  with a model that returns numbers instead of prose.</p>
 </header>
 
 <h2>How it works</h2>
@@ -76,7 +82,8 @@
 summary has the same failure modes as the answers it is grading, and it states its
 confidence in words.</p>
 
-<p>Mandos gives the judging to <a href="https://github.com/Fox-Islam/typesafe-sdk-php">Jev</a>,
+<p>Mandos gives the judging to
+<a href="https://typesafe.ai/blog/introducing-system-one-models-and-jev">Jev</a>,
 TypeSafe's decision model. Jev answers named questions in fixed shapes: a probability
 for a yes/no question, a label with a distribution for a choice, a level on a rubric for
 a score. A consensus in the output therefore means something specific. Every panel
@@ -251,9 +258,9 @@ roughly $0.0002 to adjudicate a whole panel.</p>
   so that row shows a strong panel rather than the strongest available.</li>
   <li>The panel has no web access and cannot read your files. Evidence reaches it
   because the calling model gathers it.</li>
-  <li>This is not <a href="https://openrouter.ai/docs/guides/routing/routers/fusion-router">OpenRouter
-  Fusion's</a> benchmark. Theirs is DRACO: 100 deep-research tasks, rubric-graded, with
-  web search and a shell available to every model. None of that is reproducible here.</li>
+  <li>This is not OpenRouter's benchmark. Theirs is DRACO: 100 deep-research tasks,
+  rubric-graded, with web search and a shell available to every model. None of that is
+  reproducible here, and their numbers are not comparable to these.</li>
 </ul>
 
 <footer>

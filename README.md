@@ -1,12 +1,16 @@
 # Mandos
 
-Named for Mandos, the Doomsman of the Valar — the one who pronounces judgement.
-
 A multi-model deliberation MCP server whose **judge does not write prose**.
 
+The approach is OpenRouter's. Their [Fusion
+router](https://openrouter.ai/blog/announcements/fusion-beats-frontier/) showed that a
+panel of models with an analysis stage beats the frontier models it is built from, and
+[documents how](https://openrouter.ai/docs/guides/routing/routers/fusion-router).
+Mandos runs that shape as a local MCP server and changes the analysis stage.
+
 A panel of independent models answers your question in parallel. Then
-[**Jev**](https://github.com/Fox-Islam/typesafe-sdk-php) — TypeSafe's System One
-decision model — is asked, claim by claim and model by model, what the panel
+[**Jev**](https://typesafe.ai/blog/introducing-system-one-models-and-jev) — TypeSafe's
+System One decision model — is asked, claim by claim and model by model, what the panel
 actually established: *does this answer support this claim? do these two reach the
 same conclusion? is this disagreement real, or two models phrasing one position
 differently?* Every answer comes back as a calibrated probability. Your harness's own
@@ -83,16 +87,12 @@ no panel: measured over 8 such questions, the author scored 7/8 alone, **6/8** w
 uninformed panel, and **8/8** once the panel's own request was answered and it was
 asked again.
 
-## Relationship to OpenRouter Fusion
+## What differs from Fusion
 
-Mandos began as a port of [OpenRouter's Fusion
-router](https://openrouter.ai/docs/guides/routing/routers/fusion-router) and keeps its
-shape: a panel of 1–8 models in parallel, an analysis stage, and your own model as the
-final author. The analysis schema is deliberately the same — consensus,
-contradictions, partial coverage, unique insights, blind spots — so the two are
-comparable.
-
-What differs:
+Mandos keeps Fusion's shape: a panel of 1–8 models in parallel, an analysis stage, and
+your own model as the final author. The analysis schema is deliberately the same —
+consensus, contradictions, partial coverage, unique insights, blind spots — so the two
+stay comparable.
 
 | | Fusion | Mandos |
 |---|---|---|
