@@ -5,6 +5,7 @@ import respx
 
 from orchestrator.model_catalog import (
     ModelMetadata,
+    _models_from_provider,
     cache_status,
     fetch_live_model_metadata,
     fetch_modelsdev_catalog,
@@ -209,3 +210,36 @@ def test_fetch_modelsdev_catalog_filters_to_openai_compatible_npm_packages():
             source="modelsdev",
         )
     ]
+
+
+def test_modelsdev_pricing_survives_the_parse():
+    """models.dev nests prices under ``cost``. Dropping that block left all 6450
+    refreshed models unpriced, so ``cost_estimate_usd`` reported 0 for every panel."""
+    payload = {
+        "openrouter": {
+            "id": "openrouter",
+            "npm": "@ai-sdk/openai-compatible",
+            "models": {
+                "google/gemini-3-flash-preview": {
+                    "id": "google/gemini-3-flash-preview",
+                    "name": "Gemini 3 Flash Preview",
+                    "limit": {"context": 1048576},
+                    "cost": {"input": 0.5, "output": 3},
+                }
+            },
+        }
+    }
+    models = _models_from_provider("openrouter", payload["openrouter"])
+    assert len(models) == 1
+    assert (models[0].input_cost, models[0].output_cost) == (0.5, 3.0)
+
+
+def test_cache_memo_is_invalidated_when_the_cache_is_refreshed(tmp_path):
+    """The catalog is memoised because re-parsing 1.5MB per lookup blocked the event
+    loop. A refresh must still be visible immediately."""
+    cache = tmp_path / "catalog.json"
+    write_cache([ModelMetadata(provider_key="openrouter", id="m", input_cost=1.0)], cache)
+    assert resolve_model_metadata("openrouter", "m", cache_path=cache).input_cost == 1.0
+
+    write_cache([ModelMetadata(provider_key="openrouter", id="m", input_cost=2.0)], cache)
+    assert resolve_model_metadata("openrouter", "m", cache_path=cache).input_cost == 2.0

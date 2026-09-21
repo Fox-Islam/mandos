@@ -1,6 +1,6 @@
 """Offline-first provider/model metadata catalog.
 
-The catalog deliberately avoids executing third-party package code. Bundled seed
+The catalog never executes third-party package code. Bundled seed
 data and optional JSON cache files are the only normal inputs; live ``/models``
 fetching is an explicit refresh path.
 """
@@ -11,6 +11,7 @@ import json
 import re
 import time
 from dataclasses import dataclass
+from functools import lru_cache
 from importlib.resources import files
 from pathlib import Path
 from typing import Any
@@ -181,6 +182,7 @@ def _coerce_context_window(raw: dict[str, Any]) -> int | None:
     return None
 
 
+@lru_cache(maxsize=1)
 def load_seed_catalog() -> list[ModelMetadata]:
     resource = files("orchestrator.data").joinpath("model_catalog_seed.json")
     data = json.loads(resource.read_text(encoding="utf-8"))
@@ -244,7 +246,31 @@ def cache_status(
     )
 
 
+# A refreshed cache is ~1.5MB of JSON, and a deliberation resolves metadata three
+# times per provider (price, context window, budget). Re-parsing it per lookup put
+# ~70ms of blocking work on the event loop each time, which serialised concurrent
+# deliberations. Keyed on mtime so a refresh is still picked up immediately.
+_CACHE_MEMO: dict[str, tuple[float, int, list[ModelMetadata]]] = {}
+_MERGED_MEMO: dict[str, tuple[int, list[ModelMetadata]]] = {}
+
+
 def read_cache(path: str | Path = DEFAULT_CACHE_PATH) -> list[ModelMetadata]:
+    target = Path(path).expanduser()
+    try:
+        stat = target.stat()
+        key = str(target)
+        memo = _CACHE_MEMO.get(key)
+        if memo is not None and memo[0] == stat.st_mtime and memo[1] == stat.st_size:
+            return memo[2]
+    except OSError:
+        stat = None
+    models = _parse_cache(path)
+    if stat is not None:
+        _CACHE_MEMO[str(target)] = (stat.st_mtime, stat.st_size, models)
+    return models
+
+
+def _parse_cache(path: str | Path) -> list[ModelMetadata]:
     data = _read_cache_payload(path)
     if data is None:
         return []
@@ -284,8 +310,23 @@ def models_for_provider(
     cache_path: str | Path = DEFAULT_CACHE_PATH,
     overrides: list[ModelMetadata] | None = None,
 ) -> list[ModelMetadata]:
-    catalog = merge_catalogs(load_seed_catalog(), read_cache(cache_path), overrides or [])
+    if overrides:
+        catalog = merge_catalogs(load_seed_catalog(), read_cache(cache_path), overrides)
+    else:
+        catalog = _merged_catalog(cache_path)
     return [model for model in catalog if model.provider_key == provider_key]
+
+
+def _merged_catalog(cache_path: str | Path) -> list[ModelMetadata]:
+    """Seed merged with the cache, rebuilt only when the cache file changes."""
+    cached = read_cache(cache_path)
+    key = (str(Path(cache_path).expanduser()), id(cached))
+    memo = _MERGED_MEMO.get(key[0])
+    if memo is not None and memo[0] == key[1]:
+        return memo[1]
+    merged = merge_catalogs(load_seed_catalog(), cached, [])
+    _MERGED_MEMO[key[0]] = (key[1], merged)
+    return merged
 
 
 def resolve_model_metadata(
@@ -370,6 +411,10 @@ def _modelsdev_metadata(
             "id": str(model_data.get("id") or model_id),
             "display_name": model_data.get("name"),
             "context_window": raw_context,
+            # models.dev nests per-million prices under `cost`; without passing it
+            # through, every refreshed model landed unpriced and `cost_estimate_usd`
+            # reported 0 for the whole panel.
+            "cost": model_data.get("cost"),
             "source": "modelsdev",
         },
         source="modelsdev",
