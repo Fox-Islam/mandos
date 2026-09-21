@@ -17,7 +17,7 @@ mcp = FastMCP("mandos")
 def _progress_reporter():
     """Report progress to the host, when there is a host listening.
 
-    Taken from the ambient request rather than a ``ctx: Context`` parameter: adding one
+    Taken from the ambient request instead of a ``ctx: Context`` parameter: adding one
     makes FastMCP resolve this module's annotations eagerly, and with
     ``from __future__ import annotations`` that fails on the ``Annotated`` field specs
     the tool signature is built from. Fetching it here keeps the signature plain.
@@ -39,11 +39,11 @@ def _safe_error(exc: Exception) -> str:
     """Sanitize a request/config-load error before it crosses the tool boundary or is
     logged.
 
-    A pydantic ``ValidationError`` renders its ``input_value`` — for a config-load
+    A pydantic ``ValidationError`` renders its ``input_value`` - for a config-load
     failure that is the whole config dict, including ``headers`` (which can carry an
     ``Authorization`` secret) and ``api_key_env`` names; custom-validator ``msg`` text
     embeds env-var names too. So we surface only the structurally-safe parts of each
-    error — its field location and type — never ``msg``, ``input``, or ``ctx`` (golden
+    error - its field location and type - never ``msg``, ``input``, or ``ctx`` (golden
     rule: never return or log secrets)."""
     if isinstance(exc, ValidationError):
         parts = [
@@ -141,7 +141,7 @@ async def mandos(
             default=None,
             description=(
                 "Override the judge for this call. 'probe' reports only what the panel "
-                "lacked and does not deliberate — use it when the answer turns on a "
+                "lacked and does not deliberate - use it when the answer turns on a "
                 "fact nobody has. 'hybrid' adjudicates claims and attributes them. "
                 "'matrix' measures agreement with no generative model in the loop. "
                 "'verify' has an analyst write and Jev grade it. 'llm' skips Jev "
@@ -178,21 +178,15 @@ async def mandos(
     "compare and contrast", architecture/design trade-offs, or any task where being
     wrong is costly.
 
-    The judging is done by a calibrated decision model, not a generative one, so every
-    finding arrives with the probabilities it was derived from in
-    `analysis.calibration` — joined to the prose by `role` and `index`. A consensus
-    whose weakest supporter scored 0.61 is a different instruction from the same
-    sentence at 0.94. Check `meta.judge_fallback_from`: if it is set, the calibrated
-    judge did not run and the analysis is an ordinary generative one.
+    A calibrated decision model does the judging, not a generative one, so every finding
+    arrives with the probabilities behind it in `analysis.calibration`, joined to the
+    prose by `role` and `index`. Weight findings by those numbers. If
+    `meta.judge_fallback_from` is set, the calibrated judge did not run and the analysis
+    is an ordinary generative one.
 
-    The panel cannot reach your machine. Put facts it could not know in `context`, and
-    check `analysis.needs_evidence` in the result: it lists what the panel found itself
-    missing, so a second call with that evidence supplied is often worth more than
-    guessing what to include up front.
-
-    `judge_shape` picks how the panel is judged for this call: 'probe' when the answer
-    hinges on information nobody was given, 'hybrid' when the models will genuinely
-    differ and you want the disagreement attributed.
+    The panel cannot reach your machine, so put facts it could not know in `context`.
+    `analysis.needs_evidence` lists what it found itself missing; calling again with that
+    evidence supplied and `depth` raised is usually worth more than guessing up front.
 
     You (the calling model) remain the final author: read the analysis, its numbers,
     and the raw answers, then write the answer.
@@ -239,7 +233,7 @@ async def mandos_status() -> dict:
     endpoint's on-prem/off-prem egress), presets, provider roles, per-provider egress,
     and advisory context-budget state. Performs no liveness probe.
 
-    Never returns secret values or ``api_key_env`` names (plan §6.2).
+    Never returns secret values or ``api_key_env`` names.
     """
     try:
         return load_config().safe_status()
@@ -261,21 +255,21 @@ def council_prompt(question: str) -> str:
         "so is more useful than repeating it flatly.\n"
         "- Numbers are evidence, not permission. A high score means the answers back "
         "the claim consistently; the panel can be consistently wrong.\n"
-        "- If `meta.judge_fallback_from` is set, the calibrated judge did not run — "
+        "- If `meta.judge_fallback_from` is set, the calibrated judge did not run - "
         "treat the analysis as one model's opinion and say so if it matters.\n"
         "- `analysis.needs_evidence` lists what the panel lacked, with how likely "
         "having it would change the answer. `meta.evidence_outstanding` counts the "
         "ones decisive enough to be worth fetching; `meta.passes_remaining` says how "
         "many more times you may convene.\n"
         "- **Keep going while it is still asking.** If both are above zero, get what "
-        "you can — read the file, run the query, check the version — add it to "
+        "you can - read the file, run the query, check the version - add it to "
         "everything you already supplied, and call `mandos` again with `depth` one "
         "higher. Repeat. Answering one question often uncovers the next, so stopping "
         "after a single round is arbitrary.\n"
         "- Stop when it stops asking, when what remains is something you cannot "
         "obtain, or when you run out of passes. Then say plainly which assumptions "
         "were never settled, rather than letting them stand as fact.\n"
-        "- Preserve genuine contradictions and caveats — do not smooth them away.\n"
+        "- Preserve genuine contradictions and caveats - do not smooth them away.\n"
         "- Flag where the panel was uncertain or left blind spots unaddressed.\n"
         "- Attribute non-obvious or contested claims to their source where it helps "
         "the reader judge reliability.\n\n"
