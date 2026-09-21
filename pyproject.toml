@@ -28,7 +28,7 @@ dependencies = [
 
 [tool.setuptools.package-data]
 "orchestrator.cli.tui" = ["*.tcss"]
-"orchestrator.data" = ["*.json"]
+"orchestrator.data" = ["*.json", "*.example"]
 
 [project.scripts]
 mandos = "orchestrator.cli.app:main"

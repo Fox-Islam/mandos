@@ -82,3 +82,23 @@ def test_shipped_config_lists_every_judge_shape(path: Path) -> None:
     assert listed - {""}, f"{path.name}: nothing beside `shape:` lists the options"
     for shape in JudgeShape.__args__:  # type: ignore[attr-defined]
         assert shape in listed, f"{path.name}: the list beside `shape:` omits {shape!r}"
+
+
+def test_env_example_covers_every_provider_the_catalog_offers() -> None:
+    """The example is what a new install is seeded from and what Sync adds.
+
+    A provider whose key name is missing here cannot be filled in from the screen.
+    """
+    from orchestrator.cli.catalog import CATALOG
+    from orchestrator.cli.secrets import example_env_names
+    from orchestrator.jev.client import PROVIDERS
+
+    offered = set(example_env_names())
+    for entry in CATALOG:
+        if entry.default_api_key_env:
+            assert entry.default_api_key_env in offered, (
+                f"catalog offers {entry.key} keyed by {entry.default_api_key_env}, "
+                "which env.example does not list"
+            )
+    for name, spec in PROVIDERS.items():
+        assert spec["api_key_env"] in offered, f"Jev provider {name} key is not listed"

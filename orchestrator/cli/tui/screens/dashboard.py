@@ -213,12 +213,14 @@ class DashboardScreen(Screen[None]):
                     ("roles", "Reassign roles"),
                     ("judge", "Edit judge"),
                     ("defaults", "Edit run defaults"),
+                    ("env", "Edit API keys"),
                 ]
             )
         else:
             actions.append(("wire", WIRE_HARNESSES_LABEL))
             actions.append(("judge", "Edit judge"))
             actions.append(("defaults", "Edit run defaults"))
+            actions.append(("env", "Edit API keys"))
             actions.append(("refresh", "Refresh model catalog"))
             actions.append(("quit", "Quit"))
             return actions
@@ -377,6 +379,8 @@ class DashboardScreen(Screen[None]):
             self.action_edit_judge()
         elif action_id == "defaults":
             self.action_run_defaults()
+        elif action_id == "env":
+            self.action_edit_env_vars()
         elif action_id == "refresh":
             self.action_refresh_catalog()
         elif action_id == "wire":
@@ -448,6 +452,14 @@ class DashboardScreen(Screen[None]):
         from orchestrator.cli.tui.screens.harness import HarnessScreen
 
         self.app.push_screen(HarnessScreen(dashboard=self))
+
+    def action_edit_env_vars(self) -> None:
+        draft = self.app.draft
+        if draft is None:
+            return
+        from orchestrator.cli.tui.screens.env_vars import EnvVarsScreen
+
+        self.app.push_screen(EnvVarsScreen(dashboard=self))
 
     def action_refresh_catalog(self) -> None:
         self._catalog_status = f"{NODE} Catalog  refreshing..."

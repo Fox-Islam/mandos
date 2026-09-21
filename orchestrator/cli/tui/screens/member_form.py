@@ -119,7 +119,7 @@ class MemberFormScreen(DraftCommitMixin, ArrowNavigationMixin, Screen[None]):
                 yield Static("max_retries", classes="field-label")
                 yield Input("1", id="max-retries", type="integer")
                 yield Checkbox("enabled", value=True, id="enabled")
-            with Horizontal(classes="form-row"):
+            with Horizontal(classes="form-actions"):
                 yield Button("Test connection", id="test-connection")
                 yield Button("Save", variant="primary", id="save-member")
                 yield Button("Cancel", id="cancel")

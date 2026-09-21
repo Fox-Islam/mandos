@@ -128,10 +128,24 @@ Screen {
     color: #D67D3D;
     height: 1;
     width: auto;
+    /* A label sits directly under the previous control otherwise, which reads as one
+       block on a screen whose fields are checkboxes rather than bordered inputs. */
+    margin-top: 1;
 }
 
 .form-row {
     height: auto;
+}
+
+/* The action row sat wherever the fields happened to end, so it landed under the
+   last field on one screen and at the foot of the panel on another. Docking pins it
+   to the bottom of every screen and keeps it reachable without scrolling. */
+.form-actions {
+    dock: bottom;
+    height: auto;
+    align-horizontal: right;
+    background: #0B0B0B;
+    padding: 0 1;
 }
 
 #preset {
@@ -159,6 +173,12 @@ Screen {
 
 #form-status {
     min-height: 2;
+}
+
+/* Without widths the first input takes the row and the second collapses to nothing. */
+#env-new-name,
+#env-new-value {
+    width: 1fr;
 }
 
 #delete-member,
@@ -207,6 +227,7 @@ Screen {
 #defaults-form,
 #roles-form,
 #harness-form,
+#env-form,
 #delete-member {
     border: double #F2914B;
     border-title-align: center;

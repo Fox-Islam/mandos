@@ -35,8 +35,8 @@ class RolesScreen(DraftCommitMixin, ArrowNavigationMixin, Screen[None]):
             yield Select([("(none)", NONE_VALUE)], allow_blank=False, id="judge-select")
             yield Static("Panel membership", classes="field-label")
             yield Vertical(id="panel-members")
-            with Horizontal(classes="form-row"):
-                yield Button("Apply", variant="primary", id="apply-roles")
+            with Horizontal(classes="form-actions"):
+                yield Button("Save", variant="primary", id="apply-roles")
                 yield Button("Cancel", id="cancel-roles")
             yield Static("", id="roles-status", classes="status")
 

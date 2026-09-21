@@ -44,6 +44,16 @@ def _action_labels(app: MandosApp) -> list[str]:
     return [str(menu.get_option_at_index(index).prompt) for index in range(menu.option_count)]
 
 
+async def _choose_action(pilot, app: MandosApp, label: str) -> None:
+    """Walk the menu to ``label`` with the keyboard.
+
+    Counting keypresses instead pinned every test to the menu's current order, so
+    adding one entry broke tests that had nothing to do with it.
+    """
+    index = _action_labels(app).index(label)
+    await pilot.press(*(["down"] * index), "enter")
+
+
 async def _wait_for(pilot, predicate, message: str) -> None:
     for _ in range(80):
         await pilot.pause(0.05)
@@ -122,6 +132,7 @@ async def test_dashboard_empty_config_renders_issues_and_add_affordance(tmp_path
             "Wire harnesses",
             "Edit judge",
             "Edit run defaults",
+            "Edit API keys",
             "Refresh model catalog",
             "Quit",
         ]
@@ -139,7 +150,7 @@ async def test_empty_dashboard_arrow_menu_opens_add_member(tmp_path, monkeypatch
         menu = _action_menu(app)
 
         assert menu.has_focus
-        assert menu.option_count == 6
+        assert menu.option_count == 7
         assert menu.highlighted == 0
 
         await pilot.press("down")
@@ -330,7 +341,7 @@ async def test_dashboard_refresh_catalog_action_reports_status(tmp_path, monkeyp
     app = MandosApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
     async with app.run_test(size=(80, 24)) as pilot:
         await pilot.pause()
-        await pilot.press("down", "down", "down", "down", "enter")
+        await _choose_action(pilot, app, "Refresh model catalog")
         await _wait_for(
             pilot,
             lambda: "Catalog  refreshed 1 models" in _dashboard_text(app, "#harness"),
@@ -443,7 +454,7 @@ async def test_dashboard_quit_action_exits_cleanly(tmp_path, monkeypatch):
     app = MandosApp(config_path=tmp_path / "missing.json", home=tmp_path)
 
     async with app.run_test(size=(80, 24)) as pilot:
-        await pilot.press("down", "down", "down", "down", "down", "enter")
+        await _choose_action(pilot, app, "Quit")
 
     assert app.return_value == 0
 

@@ -60,8 +60,8 @@ class JudgeScreen(DraftCommitMixin, ArrowNavigationMixin, Screen[None]):
             yield Input(placeholder="30", id="judge-timeout", type="number")
             yield Static("Questions per call", classes="field-label")
             yield Input(placeholder="60 questions per Jev call", id="judge-batch", type="integer")
-            with Horizontal(classes="form-row"):
-                yield Button("Apply", variant="primary", id="apply-judge")
+            with Horizontal(classes="form-actions"):
+                yield Button("Save", variant="primary", id="apply-judge")
                 yield Button("Cancel", id="cancel-judge")
             yield Static("", id="judge-status", classes="status")
 

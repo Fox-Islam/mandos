@@ -7,9 +7,11 @@ are never echoed or logged; the config stores only ``api_key_env`` names.
 from __future__ import annotations
 
 import os
+from importlib.resources import files
 from pathlib import Path
 
 DEFAULT_ENV_PATH = "~/.mandos/.env"
+EXAMPLE_RESOURCE = "env.example"
 
 
 def expand_user_path(path: str | Path) -> Path:
@@ -44,6 +46,72 @@ def _read_existing(path: Path) -> dict[str, str]:
         key, _, value = line.partition("=")
         existing[key.strip()] = value.strip()
     return existing
+
+
+def read_example() -> str:
+    """The packaged example env file, shipped as data so an install carries it."""
+    return files("orchestrator.data").joinpath(EXAMPLE_RESOURCE).read_text(encoding="utf-8")
+
+
+def example_env_names() -> list[str]:
+    """Variable names the example offers, in the order it lists them."""
+    names: list[str] = []
+    for raw in read_example().splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        name = line.partition("=")[0].strip()
+        if name and name not in names:
+            names.append(name)
+    return names
+
+
+def env_file_names(path: str | Path = DEFAULT_ENV_PATH) -> list[str]:
+    """Names the env file itself declares, empty ones included.
+
+    Not ``loaded_env_values``: that overlays the whole process environment, so its
+    keys would put every unrelated variable on screen.
+    """
+    return sorted(_read_existing(expand_user_path(path)))
+
+
+def _write_pairs(target: Path, pairs: dict[str, str]) -> Path:
+    """Write every pair, empty values included, and lock the file down.
+
+    ``write_env`` drops empty values because it exists to record secrets. Seeding a
+    name with no value is the opposite job: an empty value reads as unset everywhere,
+    so the name can sit in the file as a prompt without pretending to be configured.
+    """
+    target.parent.mkdir(parents=True, exist_ok=True)
+    lines = [f"{key}={value}" for key, value in pairs.items()]
+    target.write_text(("\n".join(lines) + "\n") if lines else "", encoding="utf-8")
+    try:
+        os.chmod(target, 0o600)
+    except OSError:
+        pass
+    return target
+
+
+def ensure_env_file(path: str | Path = DEFAULT_ENV_PATH) -> tuple[Path, bool]:
+    """Create the env file from the example when it is missing.
+
+    Returns the path and whether it had to be created, so a caller can say so.
+    """
+    target = expand_user_path(path)
+    if target.exists():
+        return target, False
+    _write_pairs(target, {name: "" for name in example_env_names()})
+    return target, True
+
+
+def sync_env_with_example(path: str | Path = DEFAULT_ENV_PATH) -> list[str]:
+    """Add any example name the file lacks. Nothing is renamed, changed or removed."""
+    target = expand_user_path(path)
+    existing = _read_existing(target)
+    added = [name for name in example_env_names() if name not in existing]
+    if added:
+        _write_pairs(target, {**existing, **{name: "" for name in added}})
+    return added
 
 
 def write_env(

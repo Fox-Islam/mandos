@@ -26,7 +26,7 @@ class DeleteMemberScreen(DraftCommitMixin, ArrowNavigationMixin, Screen[None]):
         with Vertical(id="delete-member") as form:
             form.border_title = f"Delete member: {self.member_id}"
             yield Static("", id="delete-warning", classes="status")
-            with Horizontal(classes="form-row"):
+            with Horizontal(classes="form-actions"):
                 yield Button("Delete", variant="error", id="confirm-delete")
                 yield Button("Cancel", id="cancel-delete")
             yield Static("", id="delete-status", classes="status")

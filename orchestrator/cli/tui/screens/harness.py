@@ -41,8 +41,8 @@ class HarnessScreen(ArrowNavigationMixin, Screen[None]):
                 id="codex-output-limit",
                 type="integer",
             )
-            with Horizontal(classes="form-row"):
-                yield Button("Apply", variant="primary", id="apply-harnesses")
+            with Horizontal(classes="form-actions"):
+                yield Button("Save", variant="primary", id="apply-harnesses")
                 yield Button("Cancel", id="cancel-harnesses")
             yield Static("", id="harness-status", classes="status")
 

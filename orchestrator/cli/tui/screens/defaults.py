@@ -39,8 +39,8 @@ class DefaultsScreen(DraftCommitMixin, ArrowNavigationMixin, Screen[None]):
             )
             yield Static("Max recursion depth", classes="field-label")
             yield Input(placeholder="3 evidence passes", id="max-depth", type="integer")
-            with Horizontal(classes="form-row"):
-                yield Button("Apply", variant="primary", id="apply-defaults")
+            with Horizontal(classes="form-actions"):
+                yield Button("Save", variant="primary", id="apply-defaults")
                 yield Button("Cancel", id="cancel-defaults")
             yield Static("", id="defaults-status", classes="status")
 
