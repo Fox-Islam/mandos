@@ -17,9 +17,8 @@ from orchestrator.models import THREAD_ID_PATTERN, Analysis, ChatMessage, RawAns
 THREAD_ID_RE = re.compile(THREAD_ID_PATTERN)
 DEFAULT_SESSIONS_DIR = "~/.mandos/sessions"
 PERSISTED_TURNS_CAP = 200
-# Sessions used to accumulate until someone remembered to clear them. A council
-# session is a working file, not an archive, and every one of them holds prompts
-# and panel answers, so keeping them forever is a slowly growing disclosure.
+# A council session is a working file instead of an archive, and every one holds
+# prompts and panel answers, so keeping them forever is a slowly growing disclosure.
 DEFAULT_SESSION_MAX_AGE_DAYS = 30
 # One lock per live session, dropped when the last waiter leaves. Keyed by resolved
 # path, so two callers naming the same thread serialise even via different roots.
@@ -81,7 +80,7 @@ def write_session(data: dict[str, Any], *, root: str | Path | None = None) -> Pa
 async def session_lock(thread_id: str, *, root: str | Path | None = None):
     """Serialise concurrent turns on one thread.
 
-    The lock is reference-counted rather than kept forever: a long-running server that
+    The lock is reference-counted, not kept forever: a long-running server that
     sees many thread ids would otherwise accumulate one ``asyncio.Lock`` per thread for
     the life of the process. Counting happens between awaits, so it needs no lock of
     its own.

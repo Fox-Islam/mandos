@@ -1,6 +1,6 @@
-"""Data-only catalog of OpenAI-compatible provider endpoints (plan §12.2).
+"""Data-only catalog of OpenAI-compatible provider endpoints.
 
-Names no default council — these are friendly presets for the *base_url* and the
+Names no default council - these are friendly presets for the *base_url* and the
 conventional env-var name, nothing more. ``custom`` lets the user type any
 OpenAI-compatible endpoint.
 """

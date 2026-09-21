@@ -1,10 +1,13 @@
 """Async client for Jev, TypeSafe's System One decision endpoint.
 
-There is no Python SDK for Jev; ``phox/typesafe-sdk-php`` is the reference for the
-wire format, not a dependency. This is the minimum needed to be a good citizen of the
-deliberation pipeline: one POST of ``{state, model, questions}``, deadline-aware
-retries, and **every failure recorded as data rather than raised** — a judge that
-throws would take the raw panel answers down with it, which the golden rules forbid.
+TypeSafe's official ``typesafe-sdk`` is not a dependency: this client
+issues its one POST over the pooled ``httpx`` client the rest of the pipeline uses, so
+the judge call reuses a warm connection instead of opening its own pool.
+``phox/typesafe-sdk-php`` was the reference for the wire format. This is the minimum the
+pipeline needs: one POST of
+``{state, model, questions}``, deadline-aware retries, and **every failure recorded as
+data, not raised** - a judge that throws would take the raw panel answers down
+with it, which the golden rules forbid.
 
 Both providers serve the same request and answer bodies; the provider only decides the
 host, the path and which environment variable holds the key.
@@ -118,7 +121,7 @@ class JevClient:
     ) -> JevResult:
         """Ask every question in one call.
 
-        Question count is very nearly free — the jevsort runs measured one choice at
+        Question count is nearly free - the jevsort runs measured one choice at
         ~100ms against twelve scores at ~78ms of server time, because Jev answers a
         batch in parallel. So judge shapes should build the widest call they can rather
         than looping; the cost of a call is its round trip.
@@ -252,8 +255,8 @@ def _encode_state(state: Any) -> str:
     """The endpoint requires ``state`` to be a string; a raw object is rejected with a
     400 ``invalid_union``.
 
-    Callers still build structured state — keeping the answers keyed by real provider
-    id is what lets a question name one — so the structure is JSON-encoded here, which
+    Callers still build structured state - keeping the answers keyed by real provider
+    id is what lets a question name one - so the structure is JSON-encoded here, which
     is what the PHP SDK does with an array state. Indented because the value is read by
     a language model, and the indentation costs a rounding error against answers that
     run to paragraphs.

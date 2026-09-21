@@ -1,4 +1,4 @@
-"""The ``mandos`` console script: configurator TUI + ``doctor`` (plan §12.2).
+"""The ``mandos`` console script: configurator TUI + ``doctor``.
 
 ``main`` dispatches ``mandos`` (full-screen configurator), ``mandos doctor``,
 ``mandos refresh-catalog``, ``mandos clear-sessions``, and ``--help``.
@@ -29,9 +29,9 @@ Usage:
   mandos            Run the full-screen configurator TUI.
   mandos doctor     Show the resolved roster, roles, and wired harnesses (no secrets).
   mandos refresh-catalog
-                      Fetch models.dev metadata into the local catalog cache.
+                    Fetch models.dev metadata into the local catalog cache.
   mandos clear-sessions [thread_id]
-                      Clear all local council sessions, or one thread when supplied.
+                    Clear all local council sessions, or one thread when supplied.
   mandos --help     Show this help.
 
 The configurator writes ~/.mandos/config.json and ~/.mandos/.env (0600), then wires
@@ -41,7 +41,7 @@ stdio.
 
 
 def detect_wired_harnesses(home: Path) -> dict[str, bool]:
-    """Best-effort detection of which harnesses already carry an mandos entry."""
+    """Best-effort detection of which harnesses already carry a mandos entry."""
     home = Path(home).expanduser()
     wired = {}
     claude = claude_code_path(home, "global")
@@ -66,7 +66,7 @@ def _doctor_member_line(p: ProviderDescriptor) -> str:
 
 
 def _doctor_judge_lines(config: MandosConfig) -> list[str]:
-    """Report the judge that will actually decide, and its key state by name-free
+    """Report the judge that decides, and its key state by name-free
     presence only (the variable name is a secret-adjacent detail ``safe_status`` also
     withholds)."""
     judge = config.judge

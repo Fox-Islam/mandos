@@ -30,7 +30,7 @@ _OPENROUTER_HOST = "openrouter.ai"
 def is_openrouter(base_url: str, kind: str | None = None) -> bool:
     """True for an OpenRouter endpoint.
 
-    ``kind`` is the configured provider kind, which is authoritative — someone
+    ``kind`` is the configured provider kind, which is authoritative - someone
     fronting OpenRouter with their own gateway still wants their calls attributed.
     The host check catches the opposite mistake: ``kind: openai`` pointed straight at
     ``openrouter.ai``.

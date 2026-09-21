@@ -52,9 +52,9 @@ class FakeJevClient:
     """A deterministic stand-in for :class:`~orchestrator.jev.JevClient`.
 
     Answers every question in the shape that question asked for, the same way on every
-    run, so a judge test asserts on the judge rather than on a model's mood. Scripted
-    answers in ``answers`` win; anything unscripted is simulated — a yes at 0.75, the
-    first option, rubric level 0 — which mirrors ``FakeTypeSafe`` in the PHP SDK.
+    run, so a judge test asserts on the judge instead of on a model's mood. Scripted
+    answers in ``answers`` win; anything unscripted is simulated - a yes at 0.75, the
+    first option, rubric level 0 - which mirrors ``FakeTypeSafe`` in the PHP SDK.
 
     Simulated answers are the wrong default for a test whose assertion depends on the
     *negatives* (every claim looking supported at 0.75 makes everything consensus), so

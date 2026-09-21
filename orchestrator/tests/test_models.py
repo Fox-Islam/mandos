@@ -1,4 +1,4 @@
-"""Phase 2 — deliberation contract: Analysis + bounds."""
+"""Deliberation contract: Analysis + bounds."""
 
 from __future__ import annotations
 

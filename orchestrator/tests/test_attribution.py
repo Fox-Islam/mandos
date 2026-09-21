@@ -209,7 +209,7 @@ def test_retry_after_is_read_from_either_header_and_bounded():
     assert parse_retry_after({"retry-after": "9", "retry-after-ms": "250"}) == 0.25
     # An ask longer than we would ever wait is clamped, not obeyed.
     assert parse_retry_after({"retry-after": "600"}) == MAX_RETRY_AFTER_S
-    # An HTTP-date is ignored rather than guessed at.
+    # An HTTP-date is ignored instead of guessed at.
     assert parse_retry_after({"retry-after": "Wed, 21 Oct 2026 07:28:00 GMT"}) is None
     assert parse_retry_after({}) is None
 

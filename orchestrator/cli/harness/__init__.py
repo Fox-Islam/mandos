@@ -1,4 +1,4 @@
-"""Wire the ``mandos`` MCP entry into each harness (plan §11, §12.2).
+"""Wire the ``mandos`` MCP entry into each harness.
 
 Every writer is idempotent, backs up an existing file first, and never clobbers
 other MCP servers. Each launches ``mandos-mcp`` over stdio with ``MANDOS_CONFIG``

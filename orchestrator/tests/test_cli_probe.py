@@ -1,4 +1,4 @@
-"""Phase 9 — connection test + model discovery (token-safe)."""
+"""Connection test + model discovery (token-safe)."""
 
 from __future__ import annotations
 

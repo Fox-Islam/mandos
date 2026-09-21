@@ -2,13 +2,13 @@
 
 An MCP server sees only its tool arguments. Everything the panel knows about the
 conversation is whatever the calling model chose to retype into ``prompt`` and
-``context`` — a summary, written under time pressure, of a conversation the harness is
+``context`` - a summary, written under time pressure, of a conversation the harness is
 already holding in full.
 
 A harness hook can close that gap without the server ever reaching into the harness. A
 ``UserPromptSubmit`` hook writes the recent turns here and exits; when the model later
 chooses to convene a council, the server reads the file. Nothing blocks, nothing is
-classified, no API call happens on an ordinary turn, and control stays where it was —
+classified, no API call happens on an ordinary turn, and control stays where it was -
 the model still decides when to deliberate.
 
 **What this changes.** The panel already receives the conversation, filtered through
@@ -34,7 +34,7 @@ DEFAULT_CONTEXT_DIR = "~/.mandos/context"
 # Beyond this the capture is stale enough that it probably belongs to a different task.
 DEFAULT_MAX_AGE_S = 3600.0
 
-# Patterns that look like credentials wherever they appear. Deliberately broad: a false
+# Patterns that look like credentials wherever they appear. Broad: a false
 # positive costs the panel one opaque string, a false negative ships a live key to a
 # third party.
 _REDACTIONS: tuple[tuple[re.Pattern[str], str], ...] = (
@@ -162,7 +162,7 @@ def _bound(turns: list[dict[str, str]], max_chars: int) -> list[dict[str, str]]:
             continue
         if len(content) > budget:
             # Truncate from the front: the end of a turn is the part still being
-            # discussed. Stop afterwards -- everything older is out of budget.
+            # discussed. Stop afterwards - everything older is out of budget.
             if budget > 0:
                 kept.append(
                     {

@@ -5,7 +5,7 @@ to a position, how much of the question it covers, whether it contributes anythi
 others do not, and whether it admits to missing something.
 
 That last one is how ``matrix`` reports gaps at all. Naming *what* is missing needs a
-generative pass — Jev answers questions, it does not invent them — but noticing that
+generative pass - Jev answers questions, it does not invent them - but noticing that
 an answer said it was working blind does not, so the shape with no generative model in
 it can still tell a caller there is something to go and find.
 

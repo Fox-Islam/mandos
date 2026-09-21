@@ -1,9 +1,9 @@
 """Structured, stderr-only logging for the stdio MCP server.
 
-stdout is the MCP transport (invariant 8), so all logs go to **stderr**. The runtime
-configures this once in ``mcp_server.main()``. Logs carry metadata only — provider
-ids, statuses, latencies, counts, cost — never secret values, ``api_key_env`` names,
-``Authorization`` headers, or full prompts/answers (invariant 4)."""
+stdout is the MCP transport, so all logs go to **stderr**. The runtime
+configures this once in ``mcp_server.main()``. Logs carry metadata only - provider
+ids, statuses, latencies, counts, cost - never secret values, ``api_key_env`` names,
+``Authorization`` headers, or full prompts/answers."""
 
 from __future__ import annotations
 

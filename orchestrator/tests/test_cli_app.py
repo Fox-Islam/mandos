@@ -1,4 +1,4 @@
-"""Phase 10 — configurator entry points: doctor report + main dispatch."""
+"""Configurator entry points: doctor report + main dispatch."""
 
 from __future__ import annotations
 

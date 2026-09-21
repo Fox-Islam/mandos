@@ -16,10 +16,7 @@ DraftLoader = Callable[..., Draft]
 
 
 class MandosApp(App[int]):
-    """Full-screen configurator app.
-
-    Phase 2 owns the app shell and dashboard. Later phases add mutating screens.
-    """
+    """Full-screen configurator app."""
 
     CSS_PATH = "app.tcss"
     TITLE = "mandos"

@@ -2,7 +2,7 @@
 
 Pure compatibility functions: callers provide :class:`WizardAnswers`, these turn
 them into a validated :class:`MandosConfig` and write pretty JSON. Secrets never
-appear here — providers carry only an ``api_key_env`` name.
+appear here - providers carry only an ``api_key_env`` name.
 """
 
 from __future__ import annotations

@@ -1,5 +1,5 @@
 """Wire OpenCode: the ``mandos`` server in ``~/.config/opencode/opencode.json``
-(stdio / ``type: local``) — plan §11.3. This writer is authoritative on key names."""
+(stdio / ``type: local``). This writer is authoritative on key names."""
 
 from __future__ import annotations
 

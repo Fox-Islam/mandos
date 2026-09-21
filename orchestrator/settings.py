@@ -45,14 +45,13 @@ class Defaults(BaseModel):
     preset: str | None = None
     analysis_model: str | None = None
     timeout_s: float = 90
-    # Bounds the evidence-gathering loop: a caller may convene, fetch what the
-    # judge asked for, and convene again until the chain reaches this many passes.
-    # It was 1, which rejected the very retry the /council prompt asks for.
+    # Bounds the evidence-gathering loop: a caller may convene, fetch what the judge
+    # asked for, and convene again until the chain reaches this many passes. At 1 the
+    # retry the /council prompt asks for is rejected.
     max_depth: int = 3
-    # 1024 truncated real panel answers into stubs and, worse, cut the generative
-    # judge off mid-JSON on any panel worth convening. OpenRouter's Fusion allows
-    # 16000 per inner call; 4096 is a middle that answers properly without inviting
-    # an eight-member panel to write essays.
+    # 1024 truncates real panel answers into stubs and cuts the generative judge off
+    # mid-JSON on any panel worth convening. OpenRouter's Fusion allows 16000 per inner
+    # call; 4096 answers fully without inviting an eight-member panel to write essays.
     max_tokens: int | None = 4096
     # The generative judge and the claim extractor summarise the whole panel, so they
     # need more room than any single panellist.
@@ -71,12 +70,12 @@ class ContextConfig(BaseModel):
 
     ``from_transcript`` reads the capture a harness hook leaves in
     ``~/.mandos/context`` (see :mod:`orchestrator.transcript`) and prepends it to the
-    panel prompt, so the panel sees the discussion rather than the calling model's
+    panel prompt, so the panel sees the discussion instead of the calling model's
     retyped summary of it. Without the hook installed there is nothing to read and the
     setting does nothing.
 
     On by default: the panel already receives this conversation, filtered through the
-    calling model's judgement. What changes is completeness, so the bounds matter —
+    calling model's judgement. What changes is completeness, so the bounds matter -
     ``max_turns`` and ``max_chars`` cap it, credentials are stripped before anything is
     written to disk, and a capture older than ``max_age_s`` is ignored as belonging to
     a different task.
@@ -93,21 +92,21 @@ class JudgeConfig(BaseModel):
     """The Jev judge.
 
     ``shape`` decides what runs (see :mod:`orchestrator.judge`). The default is
-    ``hybrid``, the only shape that returns claim-level narrative — consensus,
-    contradictions, attributed insights — *and* the numbers behind it.
+    ``hybrid``, the only shape that returns claim-level narrative - consensus,
+    contradictions, attributed insights - *and* the numbers behind it.
 
     ``matrix`` is cheaper, marginally faster and needs no ``defaults.analysis_model``
     at all, being the only shape with no generative model in the judging loop; it
-    returns agreement numbers and an outlier rather than a narrative.
+    returns agreement numbers and an outlier instead of a narrative.
 
     ``probe`` is the cheapest and does not deliberate: it reports only what the answers
     were missing. Pair it with a single-member panel when the question turns on a fact
-    nobody was given rather than on a disagreement.
+    nobody was given instead of on a disagreement.
 
     ``llm`` needs no Jev. Every Jev shape falls back to the analyst only if Jev cannot
     deliver.
 
-    ``api_key_env`` names the environment variable holding the key — never the key
+    ``api_key_env`` names the environment variable holding the key - never the key
     itself, and the name is not returned by ``safe_status``. Left unset it follows the
     provider, so switching provider switches which key is read, exactly as the PHP SDK
     does.
@@ -121,7 +120,7 @@ class JudgeConfig(BaseModel):
     api_key_env: str | None = None
     timeout_s: float = 30
     max_retries: int = 2
-    # Jev answers a batch in parallel, so this bounds one request body rather than
+    # Jev answers a batch in parallel, so this bounds one request body instead of
     # cost: raising it makes a judge round trip wider, not slower.
     questions_per_call: int = Field(default=60, ge=1)
     headers: dict[str, str] = Field(default_factory=dict)
@@ -164,7 +163,7 @@ class ProviderDescriptor(BaseModel):
     api_key_env: str | None = None
     headers: dict[str, str] = Field(default_factory=dict)
     # Provider-executed tools, passed through verbatim (OpenRouter: web_search,
-    # web_fetch). Client-executed "function" tools are rejected -- see
+    # web_fetch). Client-executed "function" tools are rejected - see
     # _validate_provider_tools.
     tools: list[dict[str, Any]] = Field(default_factory=list)
     max_tool_calls: int | None = Field(default=None, ge=1)
@@ -235,7 +234,7 @@ def _validate_enabled_secrets(enabled: dict[str, ProviderDescriptor]) -> None:
 
 def _warn_keyless_remote_providers(enabled: dict[str, ProviderDescriptor]) -> None:
     """Non-fatal: a remote (off-prem) provider with no ``api_key_env`` will send
-    ``Authorization: Bearer none`` and fail remotely with a confusing 401 rather than
+    ``Authorization: Bearer none`` and fail remotely with a confusing 401 instead of
     a clear local config error. Keyless local/LAN endpoints (vLLM, etc.)
     are legitimate and never warned."""
     for p in enabled.values():
@@ -336,7 +335,7 @@ class MandosConfig(BaseModel):
         """Non-secret config snapshot.
 
         Never leaks secret values or ``api_key_env`` *names*; reports only whether a
-        provider requires a secret (plan §6.2, §14). The ``budget`` block holds
+        provider requires a secret. The ``budget`` block holds
         **advisory** context-budget estimates computed for *enabled* providers; this
         reads the on-disk model-catalog cache (no network) and so can vary with cache
         freshness.
@@ -487,8 +486,10 @@ def _mode_is_group_or_other_readable(mode: int) -> bool:
 
 
 def _warn_if_env_permissive(target: Path) -> None:
-    """On POSIX, warn (never the contents) if the ``.env`` is group/other-readable —
-    defense-in-depth for invariant 4. No-op on Windows."""
+    """On POSIX, warn (never the contents) if the ``.env`` is group/other-readable.
+
+    Defence in depth for the rule that secrets never leave this file. No-op on Windows.
+    """
     if os.name != "posix":
         return
     try:
@@ -508,7 +509,7 @@ def load_env_file(path: str | Path | None = None) -> None:
     Tiny stdlib loader (no new dependency): tolerates a missing file, ignores blank
     lines and ``#`` comments, accepts an optional ``export`` prefix, and unwraps a
     single layer of matching single/double quotes. Existing environment variables
-    win — already-exported secrets are never clobbered (plan §10).
+    win - already-exported secrets are never clobbered.
     """
     target = Path(path) if path is not None else Path.home() / ".mandos/.env"
     if not target.exists():

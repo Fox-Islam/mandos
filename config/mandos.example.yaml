@@ -1,10 +1,11 @@
 # The judge. `shape` decides what does the judging:
 #   hybrid  an analyst proposes claims, Jev decides them (the default)
-#   matrix  Jev alone -- pairwise agreement and per-answer rubrics, no analyst
+#   matrix  Jev alone - pairwise agreement and per-answer rubrics, no analyst
 #   verify  the analyst writes the analysis, Jev grades each finding
+#   probe   no deliberation - only what the answers were missing
 #   llm     the generative analyst alone, uncalibrated
-# Every shape but `llm` calls Jev and falls back to the analyst if Jev cannot
-# deliver. `api_key_env` is left unset so it follows `provider`.
+# Every shape but `llm` calls Jev. All but `probe` fall back to the analyst if Jev
+# cannot deliver. `api_key_env` is left unset so it follows `provider`.
 judge:
   shape: hybrid
   provider: typesafe          # or: openrouter
@@ -17,11 +18,12 @@ judge:
 
 defaults:
   preset: quality
-  # The generative analyst: proposes claims for `hybrid`, writes the analysis for
-  # `verify` and `llm`, and is the fallback whenever Jev is unreachable.
+  # The generative analyst: proposes claims for `hybrid`, proposes gaps for `probe`,
+  # writes the analysis for `verify` and `llm`, and is the fallback whenever Jev is
+  # unreachable.
   analysis_model: local
   timeout_s: 90
-  max_depth: 1
+  max_depth: 3
   max_tokens: 4096
   analysis_max_tokens: 8192
   budget_warning_ratio: 0.75

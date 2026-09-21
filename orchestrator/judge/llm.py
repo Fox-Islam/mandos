@@ -61,11 +61,11 @@ async def run_deliberation_judge(
     The judge sees real provider ids. If JSON parsing or schema validation fails,
     the caller still returns all raw answers and records ``meta.judge_error``.
 
-    The judge shares the panel's single absolute ``deadline`` (no extension —
-    invariant 1). Enforcement is provider-internal by contract: the provider checks
+    The judge shares the panel's single absolute ``deadline`` and never extends it.
+    Enforcement is provider-internal by contract: the provider checks
     the remaining budget each attempt and returns a graceful error result when it is
     exhausted, so a near-expired deadline degrades to ``meta.judge_error`` +
-    ``analysis=None`` rather than running unbounded.
+    ``analysis=None`` instead of running unbounded.
     """
     outcome = JudgeOutcome(shape="llm")
     if not answers:

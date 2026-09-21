@@ -1,4 +1,4 @@
-"""Phase 6 — MCP surface: tool surface, secret-safe status, clean short-circuit."""
+"""MCP surface: tool surface, secret-safe status, clean short-circuit."""
 
 from __future__ import annotations
 

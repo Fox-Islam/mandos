@@ -1,14 +1,13 @@
 """The generative half of the hybrid judge: turn panel answers into candidate claims.
 
 Jev answers questions; it does not invent them. Something has to read the panel and
-propose *what to adjudicate*, and that is a genuinely generative job. So the hybrid
+propose *what to adjudicate*, and that is a generative job. So the hybrid
 shape spends one cheap LLM call here and then hands every judgement to Jev.
 
-This pass is deliberately dumb. It does not decide what is true, what is agreed, or
-who is right — it only lists the propositions worth testing and the gaps worth
-checking. Every verdict comes back as a calibrated probability from the next stage,
-which is the whole point of the split: the model that is good at reading prose never
-gets to grade it.
+This pass does not decide what is true, what is agreed, or who is right; it lists the
+propositions worth testing and the gaps worth checking. Every verdict comes back as a
+calibrated probability from the next stage, so the model that reads the prose never
+grades it.
 """
 
 from __future__ import annotations
@@ -18,7 +17,7 @@ from dataclasses import dataclass, field
 from orchestrator.json_utils import parse_lenient
 from orchestrator.models import ChatRequest, RawAnswer, TokenUsage
 
-# Claim count drives question count, which drives nothing much — Jev answers a batch in
+# Claim count drives question count, which drives nothing much - Jev answers a batch in
 # parallel, so 12 claims across 8 providers is still one round trip. The cap is about
 # keeping the *extraction* call small and the analysis readable, not about Jev's cost.
 MAX_CLAIMS = 12
@@ -93,9 +92,9 @@ async def extract_claims(
     """One temperature-0 call proposing claims and blind spots.
 
     With ``evidence_only``, it proposes nothing but the missing evidence. That is a
-    smaller ask and a smaller answer, which is the point of the ``probe`` shape.
+    smaller ask and a smaller answer, which is what the ``probe`` shape wants.
 
-    Returns an :class:`Extraction` carrying ``error`` rather than raising, so a failed
+    Returns an :class:`Extraction` carrying ``error`` instead of raising, so a failed
     extraction degrades the judge instead of the deliberation.
     """
     if provider is None:
@@ -137,7 +136,7 @@ async def extract_claims(
 
 def _strings(value, limit: int) -> list[str]:
     """Tolerant list-of-strings read: drop anything that is not a non-empty string
-    rather than failing the whole extraction over one bad element."""
+    instead of failing the whole extraction over one bad element."""
     if not isinstance(value, list):
         return []
     cleaned = [v.strip() for v in value if isinstance(v, str) and v.strip()]

@@ -1,4 +1,4 @@
-"""Connection test + model discovery for the configurator (plan §12.2).
+"""Connection test + model discovery for the configurator.
 
 Token-safe: a token is sent as a bearer header but never appears in any returned
 status, detail string, or log.

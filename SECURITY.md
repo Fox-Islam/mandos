@@ -1,7 +1,7 @@
 # Security Policy
 
 Mandos is intended for self-hosted use. It runs as a single MCP **stdio**
-subprocess spawned by the harness — there is **no HTTP server, no exposed port,
+subprocess spawned by the harness - there is **no HTTP server, no exposed port,
 and no bearer token**. The only network activity is outbound HTTPS to the
 provider `base_url`s in your config. This posture is simpler and stronger than a
 network-listening service.
@@ -39,11 +39,19 @@ Do not include live secrets, private URLs, or third-party data in reports.
 - **Council sessions persist history locally.** Session mode writes
   `~/.mandos/sessions/<thread_id>.json` (0600); the `thread_id` is charset-validated
   and path-contained under the sessions directory. The file stays on-prem, but its
-  contents are re-sent to the configured panel providers each turn — only an all-local
+  contents are re-sent to the configured panel providers each turn - only an all-local
   panel keeps session history fully on-prem. Clear sessions with
-  `mandos clear-sessions [thread_id]` (or the `mandos_clear_sessions` tool); the
-  engine never auto-prunes.
+  `mandos clear-sessions [thread_id]` (or the `mandos_clear_sessions` tool). Sessions
+  left untouched for `defaults.session_max_age_days` (default 30) are pruned on the
+  next session write; set it to `0` to keep them indefinitely.
+- **The captured conversation leaves your network with the prompt.** With the capture
+  hook installed and `context.from_transcript` on (the default), panel providers
+  receive the recent conversation whole instead of the calling model's summary of it.
+  Credentials are redacted on write and the capture is stored at
+  `~/.mandos/context/<key>.json` (0600), keyed so two projects never read each other's.
+  Disable with `context.from_transcript: false`, or `use_conversation: false` for one
+  call; `mandos_status` and `mandos doctor` report whether it is on.
 - **Input bounds.** There is no built-in per-client rate limiting. Cap input
   sizes, `max_tokens`, and panel size (1–8) at the configuration boundary.
-- A recursion depth guard (`max_depth`) prevents an `mandos` call from
-  re-entering itself when a panellist is itself an Mandos instance.
+- A recursion depth guard (`max_depth`) prevents a `mandos` call from
+  re-entering itself when a panellist is itself a Mandos instance.

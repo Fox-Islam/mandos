@@ -1,4 +1,4 @@
-"""Wire Codex: ``[mcp_servers.mandos]`` in ``~/.codex/config.toml`` — plan §11.2.
+"""Wire Codex: ``[mcp_servers.mandos]`` in ``~/.codex/config.toml``
 
 No stdlib TOML *writer* exists, and a general re-serialiser would risk mangling
 unrelated Codex settings. So this splices only our own table textually: every other

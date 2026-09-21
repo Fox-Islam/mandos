@@ -33,13 +33,13 @@ Run `mandos`. The Textual configurator:
 4. Sets the judge on its own screen: shape, Jev provider, model, endpoint override
    and key.
 5. Writes `~/.mandos/config.json`.
-6. Writes token values — providers' and Jev's — only to `~/.mandos/.env` with
+6. Writes token values - providers' and Jev's - only to `~/.mandos/.env` with
    restrictive permissions.
 7. Wires Claude Code, Codex, or OpenCode to launch `mandos-mcp`.
 
 `mandos doctor` prints the resolved roster, the judge (shape, Jev provider and model,
 whether its endpoint is on-prem, whether its key is set), role assignments, off-prem
-providers, context windows, budget thresholds, and harness wiring — without secret
+providers, context windows, budget thresholds, and harness wiring - without secret
 values or env-var names. `mandos refresh-catalog` fetches models.dev metadata into the local
 cache; normal deliberation does not fetch catalog data.
 
@@ -76,7 +76,7 @@ presets:
 
 Any non-local panel provider receives the full prompt and optional context. In
 session mode, panel providers also receive the reconstructed local session history.
-Any non-local analyst receives the successful panel answers — and so does Jev, whose
+Any non-local analyst receives the successful panel answers - and so does Jev, whose
 hosted endpoints are off-prem. A local panel with a hosted Jev judge still sends the
 whole deliberation off-prem; `mandos doctor` labels the judge endpoint so this is
 visible before you send anything.

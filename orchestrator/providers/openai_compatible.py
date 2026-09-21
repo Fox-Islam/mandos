@@ -38,11 +38,11 @@ class OpenAiCompatibleProvider:
     Delegates the request + response parsing to the maintained ``openai`` async
     client, sharing the panel's pooled ``httpx.AsyncClient``. The SDK's own retries
     are disabled (``max_retries=0``) so this loop remains the single owner of the
-    overall-deadline budget (plan §7, §8.3): it retries the transient statuses in
+    overall-deadline budget: it retries the transient statuses in
     ``_RETRYABLE_STATUSES`` (408/409/425/429) plus all ``>=500`` and
     connection/timeout errors with exponential backoff + jitter, treats every other
     4xx (auth/validation) as terminal, and records every failure as a structured
-    error rather than raising into the batch.
+    error instead of raising into the batch.
     """
 
     def __init__(self, descriptor: ProviderDescriptor, http_client: httpx.AsyncClient):

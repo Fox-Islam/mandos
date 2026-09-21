@@ -3,10 +3,16 @@
 Mandos is a Python 3.13 FastMCP stdio server with two outbound clients: the
 maintained OpenAI async SDK for chat providers, and a small in-tree client for Jev.
 
-There is no Python SDK for Jev. `phox/typesafe-sdk-php` is the reference for the wire
-format, not a dependency — `orchestrator/jev/` implements the one POST it needs over
-the `httpx` client the pipeline already pools, which is also what lets the judge call
-reuse a warm connection.
+TypeSafe ships an official Python SDK (`typesafe-sdk`). Mandos does not take it as a
+dependency: the judge needs one POST of `{state, model, questions}`, and issuing it
+over the `httpx` client the pipeline already pools is what lets the judge call reuse a
+warm connection instead of opening its own. `orchestrator/jev/` is that client;
+`phox/typesafe-sdk-php` was the reference for the wire format.
+
+The trade-off is ours to maintain: a wire-format change reaches us as a bug instead of
+as a version bump. Adopting the SDK would invert that, at the cost of a second
+connection pool and its release cadence - it took a breaking serialization change in
+0.7.0.
 
 ## Runtime Packages
 
@@ -22,8 +28,8 @@ reuse a warm connection.
 | `textual` | Full-screen configurator TUI. |
 
 No third-party dependency was added for the provider-catalog/budget/session
-work: `orchestrator/model_catalog.py` (models.dev metadata fetch — data only,
-never invoking npm — JSON cache, and an offline seed), `orchestrator/budget.py`
+work: `orchestrator/model_catalog.py` (models.dev metadata fetch - data only,
+never invoking npm - JSON cache, and an offline seed), `orchestrator/budget.py`
 (advisory context-budget estimates), and `orchestrator/sessions.py` (local
 council-session store) all build on the existing packages, reusing `httpx` for
 the catalog fetch. The bundled seed `orchestrator/data/model_catalog_seed.json`
@@ -37,8 +43,8 @@ Docker/image tooling, and the curator/anonymization implementation.
 | Destination | When | Data |
 |---|---|---|
 | Panel providers | Concurrently, once per selected panel member | System prompt, the captured conversation when enabled, user prompt, optional context, model knobs, and any provider-executed tools declared. |
-| Generative analyst | For shapes `hybrid`, `verify`, `llm`, and on any Jev fallback | Question, context, and all successful raw panel answers. |
-| Jev | For shapes `hybrid`, `matrix`, `verify` | A `state` of question + context + answers by provider id, and a batch of named questions. One call unless the batch exceeds `judge.questions_per_call`. |
+| Generative analyst | For shapes `hybrid`, `verify`, `probe`, `llm`, and on any Jev fallback | Question, context, and all successful raw panel answers. |
+| Jev | For shapes `hybrid`, `matrix`, `verify`, `probe` | A `state` of question + context + answers by provider id, and a batch of named questions. One call unless the batch exceeds `judge.questions_per_call`. |
 
 All calls use configured `base_url`s and are outbound only. Provider failures are
 recorded in the response.

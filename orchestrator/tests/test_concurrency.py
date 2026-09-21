@@ -2,7 +2,7 @@
 
 A harness can have more than one council in flight, so nothing here may depend on
 being the only caller: no shared buffer, no per-call connection pool, and concurrent
-turns on one session must serialise rather than interleave.
+turns on one session must serialise, not interleave.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from orchestrator.tests.helpers import ANALYSIS_JSON_IDS, make_config, patch_pro
 
 async def test_the_http_client_is_shared_not_rebuilt_per_call():
     """A client per deliberation means a fresh TLS handshake to every provider on every
-    call -- measured at ~350ms against ~90ms of actual model time."""
+    call - measured at ~350ms against ~90ms of actual model time."""
     first = shared_client()
     assert shared_client() is first
     await aclose_shared_client()

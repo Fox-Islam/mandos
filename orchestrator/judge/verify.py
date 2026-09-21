@@ -1,16 +1,14 @@
-"""The verify judge: the generative analyst still writes, but no longer gets the last
-word.
+"""The verify judge: the generative analyst writes, Jev grades what it wrote.
 
-Fusion's analyst asserts a consensus and you take its word for it. This shape keeps
-that analyst exactly as it was — same prompt, same schema — and then puts every one of
-its findings to Jev as a yes/no question: is this consensus item actually supported by
-every answer it covers? Is this contradiction a real disagreement or two models
-phrasing one position differently?
+The analyst runs unchanged - same prompt, same schema - and then every one of its
+findings goes to Jev as a yes/no question: is this consensus item supported by every
+answer it covers? Is this contradiction a real disagreement, or two models phrasing one
+position differently?
 
 Nothing is rewritten or deleted. Each finding keeps its place and gains a number, so a
-low one is visible to the author rather than quietly dropped by a second model's
-judgement. In practice it is the cheapest way to find out how much of a generative
-analyst's output survives contact with a calibrated one.
+low one stays visible to the author instead of being dropped by a second model's
+judgement. This is the cheapest shape, and it can only grade what the analyst chose to
+write.
 """
 
 from __future__ import annotations
@@ -132,7 +130,7 @@ def _collect(analysis: Analysis, replies: dict[str, Any]) -> list[CalibratedClai
 def _append_notes(existing: str, claims: list[CalibratedClaim]) -> str:
     """Add the verification tally to whatever the analyst wrote about its confidence.
 
-    Appended rather than replacing it: the analyst's own hedging is still worth
+    Appended instead of replacing it: the analyst's own hedging is still worth
     reading next to the measurement of how well it held up.
     """
     if not claims:

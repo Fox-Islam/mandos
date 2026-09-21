@@ -2,13 +2,13 @@
 
 Every other shape needs an LLM to write something before Jev can grade it. This one
 does not, and that makes it the only judge that works with no chat provider configured
-for the judge role at all — and the only one whose output contains no sentence a model
+for the judge role at all - and the only one whose output contains no sentence a model
 made up.
 
 What it gives up is claim-level attribution: nothing here can say *what* two answers
 disagree about, only how likely it is that they disagree. What it gives back is a
-reading an author can act on immediately — which answers agree, which one is the
-odd one out, which are hedging, which only answered part of the question — in one
+reading an author can act on immediately - which answers agree, which one is the
+odd one out, which are hedging, which only answered part of the question - in one
 round trip of about 90ms of model time.
 """
 
@@ -50,7 +50,7 @@ PANEL_AGREEMENT_RUBRIC = [
 def build_questions(answer_ids: list[str]) -> dict[str, dict[str, Any]]:
     """Pairwise agreement, three readings per answer, and two panel-wide questions.
 
-    An eight-member panel is 28 pairs plus 24 readings plus 2 — 54 questions, one call.
+    An eight-member panel is 28 pairs plus 24 readings plus 2 - 54 questions, one call.
     """
     questions: dict[str, dict[str, Any]] = {}
     for left, right in combinations(answer_ids, 2):
@@ -147,7 +147,7 @@ def _notes(
     outlier: Outlier | None,
 ) -> str:
     """One derived sentence. The matrix shape writes no prose, so this is the only
-    text in its output, and every number in it was answered rather than asserted."""
+    text in its output, and every number in it was answered, not asserted."""
     if not agreement:
         return "No pairs to compare."
     mean = sum(pair.agreement for pair in agreement) / len(agreement)

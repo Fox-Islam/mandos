@@ -5,12 +5,12 @@
 Needs TYPESAFE_API_KEY or OPENROUTER_API_KEY. One call per test, a few thousandths of
 a cent each.
 
-Why this is committed rather than a throwaway script: the thresholds in
+Why this is committed instead of a throwaway script: the thresholds in
 ``judge/hybrid.py`` were not chosen, they were *measured*, and one of them had to move
 because a live run showed the panel's sharpest disagreement vanishing on a third of
-attempts. Nothing offline can catch that regressing — the fake answers whatever it is
+attempts. Nothing offline can catch that regressing - the fake answers whatever it is
 told to. This is a small fixed panel with a known correct reading, so a change in the
-derivation, the question wording, or Jev itself shows up as a failure rather than as a
+derivation, the question wording, or Jev itself shows up as a failure instead of as a
 quietly worse analysis.
 
 The panel below is written so each branch of the hybrid derivation has exactly one
@@ -150,7 +150,7 @@ async def test_hybrid_reads_the_panel_correctly(jev):
 
     # Every answer states it, so it is consensus.
     assert _claim(analysis, "never replayed").role == "consensus"
-    # delta never mentions the cap, so it is coverage rather than consensus.
+    # delta never mentions the cap, so it is coverage instead of consensus.
     assert _backers(analysis, "8000 bytes") == {"alpha", "beta", "gamma"}
     # gamma recommends it and the rest reject it: a real disagreement.
     assert _claim(analysis, "suitable primary transport").role == "contradiction"
@@ -167,7 +167,7 @@ async def test_hybrid_reads_the_panel_correctly(jev):
 async def test_a_minority_position_survives_the_support_threshold(jev):
     """The regression this file exists for.
 
-    The lone member backing the contested option scores around 0.6 -- right on
+    The lone member backing the contested option scores around 0.6 - right on
     SUPPORT_HIGH. Splitting a contested claim at that bar dropped the finding entirely
     whenever it landed a hundredth under, so the panel's sharpest disagreement
     disappeared on roughly a third of runs. It must come back as a contradiction with

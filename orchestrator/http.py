@@ -1,18 +1,14 @@
 """One HTTP client for the whole process.
 
-Every deliberation used to build its own ``httpx.AsyncClient``, which meant its own
-connection pool, which meant a fresh TCP and TLS handshake to every provider on every
-call. Measured against Jev, that handshake costs roughly 350ms where the model itself
-costs 90 — so a server answering several tool calls was spending most of its time
-saying hello.
-
-Sharing one pooled client across deliberations fixes that, and matters more the more
-concurrent calls arrive: a harness may have several councils in flight, and with a
-client per call they compete for sockets instead of reusing them.
+A client per deliberation means a connection pool per deliberation, and so a fresh TCP
+and TLS handshake to every provider on every call. Measured against Jev, that handshake
+costs roughly 350ms against 90ms of model time. Sharing one pooled client matters more
+the more concurrent calls arrive: a harness may have several councils in flight, and
+per-call clients compete for sockets instead of reusing them.
 
 The client is created lazily on the running loop and closed at shutdown. It carries no
-default timeout on purpose — every caller passes its own, derived from the
-deliberation's single absolute deadline.
+default timeout; every caller passes its own, derived from the deliberation's single
+absolute deadline.
 """
 
 from __future__ import annotations
@@ -37,7 +33,7 @@ _loop: asyncio.AbstractEventLoop | None = None
 def shared_client() -> httpx.AsyncClient:
     """The process-wide client, created on first use.
 
-    Rebuilt if the event loop has changed under it — a pool bound to a closed loop is
+    Rebuilt if the event loop has changed under it - a pool bound to a closed loop is
     worse than no pool, and tests routinely run each case on a fresh loop.
     """
     global _client, _loop
@@ -55,7 +51,7 @@ def parse_retry_after(headers) -> float | None:
     during testing: a 429 or 503 from a chat endpoint means the same thing it means
     from Jev. ``retry-after-ms`` is read too, because some providers send that instead.
 
-    HTTP-date values are ignored rather than parsed — they are rare in practice, and
+    HTTP-date values are ignored, not parsed - they are rare in practice, and
     guessing wrong is worse than falling back to exponential backoff.
     """
     milliseconds = headers.get("retry-after-ms")

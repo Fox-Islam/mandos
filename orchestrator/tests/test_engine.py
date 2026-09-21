@@ -99,7 +99,7 @@ async def test_openai_provider_success_and_4xx_and_retry():
 @pytest.mark.asyncio
 async def test_complete_never_raises_on_response_validation_error(monkeypatch):
     """A 2xx body that fails SDK validation is recorded terminally, not raised, with
-    latency/model preserved, so invariant 6 no longer leans on the panel catch-all."""
+    latency and model preserved."""
     from openai import APIResponseValidationError
 
     desc = ProviderDescriptor(id="p", base_url="https://example.test/v1", model="m", max_retries=2)

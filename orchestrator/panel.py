@@ -103,7 +103,7 @@ def failure_response(
     carries the same ``meta`` key set as a successful run so a host can read
     ``meta["panel_size"]`` / ``meta["cost_estimate_usd"]`` unconditionally, plus a
     typed ``failure`` and an ``error`` message. Renders ``text`` so the host always
-    has something to author from (invariant 6/7)."""
+    has something to author from."""
     basis = estimate_cost([], None)
     resp = DeliberationResponse(
         question=question,
@@ -390,7 +390,7 @@ def _resolve_analysis_provider(analysis_id: str | None, provider_desc, client):
     ``preset.analysis``; a per-request ``analysis_model`` override bypasses it, so it
     must be re-checked here. Returns ``(provider, judge_error)``: on any mismatch the
     provider is ``None`` and a ``judge_error`` string is returned so the pipeline
-    degrades gracefully (invariant 7) — the offending provider never receives the
+    degrades gracefully - the offending provider never receives the
     ``ANALYSIS_SYSTEM`` prompt and raw answers are still returned."""
     if not analysis_id:
         return None, None
@@ -436,7 +436,7 @@ def _conversation(request: DeliberateRequest, config) -> str:
 
 
 def _sent_input_text(chat_request: ChatRequest, fallback: str) -> str:
-    """The text actually sent to a provider, for the missing-usage cost fallback: the
+    """The text sent to a provider, for the missing-usage cost fallback: the
     full reconstructed history in session mode, else the composed one-shot prompt."""
     if chat_request.messages is not None:
         return "\n".join(message.content for message in chat_request.messages)
@@ -716,7 +716,7 @@ async def _run_deliberation(
         meta["failure"] = _classify_failure([r.error or "" for r in results])
         meta["error"] = "all panel providers failed"
         _apply_cost(meta, [CostInput(r.provider_id, r.usage) for r in results], config.pricing)
-        # No judge ran, so nothing was spent on one — but the key must be present.
+        # No judge ran, so nothing was spent on one - but the key must be present.
         meta["cost_basis"]["jev_usd"] = None
         resp = DeliberationResponse(
             question=request.prompt,
@@ -737,7 +737,7 @@ async def _run_deliberation(
     analysis_provider, judge_role_error = _resolve_analysis_provider(
         analysis_id, provider_desc, client
     )
-    # The right shape depends on the question rather than the installation, so a caller
+    # The right shape depends on the question instead of the installation, so a caller
     # that knows which it is facing may say so; config supplies the default.
     shape = request.judge_shape or config.judge.shape
     await _report(on_progress, len(providers), total, f"judging ({shape})")
@@ -766,7 +766,7 @@ async def _run_deliberation(
 
     if outcome.analysis_error or judge_role_error:
         # A misconfigured analyst is part of why the judge came up short, so it
-        # belongs in the same field rather than a second one the host must know to
+        # belongs in the same field instead of a second one the host must know to
         # look for.
         meta["judge_error"] = "; ".join(
             part for part in (judge_role_error, outcome.analysis_error) if part

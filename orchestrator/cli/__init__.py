@@ -1,4 +1,4 @@
-"""The ``mandos`` configurator TUI (plan §12).
+"""The ``mandos`` configurator TUI.
 
 Full-screen Textual app (``app.py``) over pure, unit-tested functions: provider
 ``catalog``, ``config_ops`` / ``config_writer`` (build + persist config),

@@ -12,7 +12,7 @@ from orchestrator.models import RawAnswer
 
 # Jev answers a batch in parallel, so a call costs its round trip and almost nothing
 # per question. Batching is therefore the only lever that matters, and the cap exists
-# to bound one request body rather than to save money. Configurable per deployment.
+# to bound one request body instead of to save money. Configurable per deployment.
 DEFAULT_QUESTIONS_PER_CALL = 60
 
 
@@ -23,9 +23,9 @@ def build_state(
 ) -> dict[str, Any]:
     """The JSON state every Jev judge question is asked about.
 
-    Structured rather than flattened to prose: the answers stay keyed by real provider
+    Structured, not flattened to prose: the answers stay keyed by real provider
     id so a question can name one ("does deepseek's answer support this?") and Jev can
-    find it. ``context`` is included for the same reason the panel gets it — a judge
+    find it. ``context`` is included for the same reason the panel gets it - a judge
     scoring coverage against half a question scores the wrong thing.
     """
     state: dict[str, Any] = {"question": question}
@@ -60,7 +60,7 @@ async def ask_all(
 
     Returns the merged answer map and the first error encountered. A partial failure is
     reported but not discarded: answers that did come back are still usable, and the
-    shapes treat a missing answer as maximal uncertainty rather than as a crash.
+    shapes treat a missing answer as maximal uncertainty instead of as a crash.
     """
     merged: dict[str, Any] = {}
     error: str | None = None

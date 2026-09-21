@@ -2,9 +2,9 @@
 
 This is the shape that keeps Fusion's analysis schema while replacing its judgement.
 A cheap generative pass lists what is worth testing (``extract.py``); Jev then answers,
-for every claim and every panel member, "does this answer support this?" — and the
+for every claim and every panel member, "does this answer support this?" - and the
 consensus / contradictions / partial coverage / unique insights that come back are
-*derived from those probabilities*, not asserted by a model that felt like it.
+*derived from those probabilities*, not asserted by a model.
 
 The practical difference: a Fusion analyst that calls something consensus is making a
 claim you cannot check. Here, "consensus" means every panel member scored above
@@ -46,19 +46,19 @@ from orchestrator.models import (
 )
 
 # A panel member is counted as backing a claim above SUPPORT_HIGH and as rejecting it
-# below SUPPORT_LOW. The gap between them is deliberate: an answer that simply did not
-# address a claim lands in the middle, and must not be read as either agreement or
+# below SUPPORT_LOW. The gap between them matters: an answer that did not address a
+# claim lands in the middle, and must not be read as either agreement or
 # dissent. That distinction is what ``partial_coverage`` exists to carry.
 SUPPORT_HIGH = 0.6
 SUPPORT_LOW = 0.4
 
-# Above this, Jev thinks the answers genuinely disagree rather than differ in wording.
+# Above this, Jev thinks the answers genuinely disagree instead of differ in wording.
 CONTESTED = 0.5
 
 # Above this, a proposed blind spot is treated as real.
 BLIND_SPOT = 0.5
 
-# Above this, the panel genuinely lacked a piece of evidence rather than merely
+# Above this, the panel genuinely lacked a piece of evidence instead of merely
 # omitting it. Reported, never acted on: whether to go and fetch it is the calling
 # model's decision, and it is the only party that can.
 LACKED = 0.5
@@ -78,8 +78,8 @@ def build_questions(
 ) -> dict[str, dict[str, Any]]:
     """One question per (claim, panel member), plus two per claim and one per gap.
 
-    For 12 claims over a 3-member panel that is 66 questions — one round trip, because
-    question count is very nearly free and only the round trip is not.
+    For 12 claims over a 3-member panel that is 66 questions - one round trip, because
+    question count is nearly free and only the round trip is not.
     """
     questions: dict[str, dict[str, Any]] = {}
     for index, claim in enumerate(claims):
@@ -105,7 +105,7 @@ def build_questions(
     # answer that hedges everything and addresses a third of the question should not
     # weigh the same as one that commits and covers it, and the author cannot tell them
     # apart from support scores alone. Measured live, a panel of three wrong models
-    # talked a correct author out of its answer -- this is the reading that would have
+    # talked a correct author out of its answer - this is the reading that would have
     # let it discount them.
     questions.update(profile_questions(answer_ids))
     for index, gap in enumerate(blind_spots):
@@ -199,16 +199,13 @@ def _assemble(
 
         backers = [s.id for s in support if s.support >= SUPPORT_HIGH]
         dissenters = [s.id for s in support if s.support <= SUPPORT_LOW]
-        # When Jev says the panel disagrees, the question is who is on which side, and
-        # the right cut is "clearly rejects" vs "does not clearly reject" — not the
-        # stricter bar used to *assert* a consensus. Splitting a contested claim at
-        # SUPPORT_HIGH loses the finding entirely whenever the lone dissenting voice
-        # lands just under it, which is exactly where a real minority position sits:
-        # measured live, the one model recommending the contested option scored 0.59
-        # to 0.60 across repeats while the other three sat at 0.02, so a SUPPORT_HIGH
-        # split turned the panel's sharpest disagreement into "nobody backed this" on
-        # a third of runs. A contradiction is the most valuable thing the judge finds;
-        # it must not hinge on a hundredth of a point.
+        # When Jev says the panel disagrees, the cut is "clearly rejects" vs "does not
+        # clearly reject", not the stricter bar used to assert a consensus. Splitting a
+        # contested claim at SUPPORT_HIGH loses the finding whenever the lone dissenting
+        # voice lands just under it, which is where a real minority position sits:
+        # measured live, the one model recommending the contested option scored 0.59 to
+        # 0.60 across repeats while the other three sat at 0.02, so a SUPPORT_HIGH split
+        # reported "nobody backed this" on a third of runs.
         leaning = [s.id for s in support if s.support > SUPPORT_LOW]
 
         if contested >= CONTESTED and leaning and dissenters:
@@ -304,10 +301,9 @@ def _needs_evidence(extraction: Extraction, replies: dict[str, Any]) -> list[Nee
 
 
 def _notes(extraction: Extraction, calibrated: list[CalibratedClaim], unsupported: int) -> str:
-    """A factual summary, derived rather than written.
+    """A factual summary derived from the numbers, not written by a model.
 
-    No model authored this sentence, which is the point: every number in it is one Jev
-    answered.
+    Every figure in it is one Jev answered.
     """
     claims = len(extraction.claims)
     if not claims:

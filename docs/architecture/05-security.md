@@ -10,7 +10,7 @@ Provider **and Jev** credentials are env-only:
 
 - Config stores `api_key_env`, the name of the environment variable. For the judge,
   leaving it unset resolves to the provider's own variable (`TYPESAFE_API_KEY` or
-  `OPENROUTER_API_KEY`) — still a name, never a value.
+  `OPENROUTER_API_KEY`) - still a name, never a value.
 - Secret values live in `~/.mandos/.env` or the existing process environment.
 - `load_env_file()` sets unset variables only.
 - `mandos_status()` strips `api_key_env` from providers and from the judge, returning
@@ -40,7 +40,7 @@ off-prem, so a Jev shape sends the whole deliberation off-prem even when every p
 member is local. For a deliberation that must stay on the network, either set
 `judge.base_url` to a self-hosted Jev endpoint or set `judge.shape: "llm"` with a
 local analyst. `mandos_status()` and `mandos doctor` both report the judge's resolved
-endpoint as `on-prem` or `off-prem` so this is checkable rather than assumed.
+endpoint as `on-prem` or `off-prem` so this is checkable, not assumed.
 
 For sensitive prompts, use an all-local panel, an on-prem or local judge, and verify
 the resolved config with `mandos_status`.
@@ -48,7 +48,7 @@ the resolved config with `mandos_status`.
 ## App Attribution
 
 OpenRouter endpoints receive `X-Title: Mandos` and an `HTTP-Referer` pointing at the
-project, so spend is attributed rather than showing as "Unknown". No other host
+project, so spend is attributed instead of showing as "Unknown". No other host
 receives either header, and neither carries anything about the user, the prompt or the
 configuration. `MANDOS_APP_TITLE=""` and `MANDOS_APP_URL=""` suppress them.
 
@@ -57,9 +57,9 @@ configuration. `MANDOS_APP_TITLE=""` and `MANDOS_APP_URL=""` suppress them.
 With the capture hook installed and `context.from_transcript` on (the default), panel
 providers receive the recent conversation, not only what the calling model retyped.
 
-This is the same data they already received, filtered differently: previously the
-calling model decided what mattered, now the last N turns go whole. What that adds is
-completeness **without judgement** — a key pasted twenty turns ago, an unrelated
+This is the same data they already received, filtered differently: the calling model
+decides what matters without the capture, and with it the last N turns go whole. What that adds is
+completeness **without judgement** - a key pasted twenty turns ago, an unrelated
 tangent, a file read for another task. Three things bound it:
 
 - Credentials matching common key, token, JWT and `SECRET=`/`Bearer` shapes are
@@ -97,7 +97,7 @@ explicitly cleared with `mandos_clear_sessions`, or until they go untouched for
 `defaults.session_max_age_days` (default 30) and are pruned on the next session
 write. Set it to `0` to keep them indefinitely.
 
-Store failures degrade rather than crash: an unreadable or corrupt session starts from
+Store failures degrade instead of crashing: an unreadable or corrupt session starts from
 empty history (turn 1) and the response still returns; an unwritable session returns
 the response with `meta.session_warning` but does not persist the turn (continuity is
 not durable).
@@ -128,7 +128,7 @@ the response carries `meta.failure = all_panels_failed`.
 `run_deliberation()` checks `request.depth >= defaults.max_depth` and returns
 `fusion_invocation_capped` before fan-out. `depth` is a tool argument, so a caller
 chaining one deliberation into another passes `depth + 1` and the chain is capped. An
-ordinary call leaves it at 0 and the guard never fires — panellists are plain chat
+ordinary call leaves it at 0 and the guard never fires - panellists are plain chat
 completions and cannot re-enter on their own.
 
 ## Operator Responsibilities

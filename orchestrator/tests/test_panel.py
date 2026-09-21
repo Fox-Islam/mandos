@@ -1,4 +1,4 @@
-"""Phase 4 — panel fan-out, failure taxonomy, degradation matrix, rendering."""
+"""Panel fan-out, failure taxonomy, degradation matrix, rendering."""
 
 from __future__ import annotations
 
@@ -111,7 +111,7 @@ async def test_markdown_carries_analysis_and_raw_answers(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_a_chain_shorter_than_the_cap_is_allowed(monkeypatch):
-    """The whole point of the guard is to bound the evidence loop, not forbid it: a
+    """The guard bounds the evidence loop, not forbid it: a
     caller that fetches what the judge asked for and convenes again must get through."""
     patch_providers(monkeypatch, all_ok_mapping())
     resp = await run_deliberation(DeliberateRequest(prompt="q", depth=1), make_config())
@@ -197,7 +197,7 @@ async def test_cost_estimate_present(monkeypatch):
 @pytest.mark.asyncio
 async def test_judge_cost_fallback_counts_question_text(monkeypatch):
     # Only the judge is priced and reports no usage, so its cost comes from the
-    # char-estimate over the input it actually received (which includes the question).
+    # char-estimate over the input it received (which includes the question).
     mapping = all_ok_mapping()
     mapping["ja"] = FakeChatProvider("ja", text=ANALYSIS_JSON_IDS, usage=TokenUsage())
     patch_providers(monkeypatch, mapping)
@@ -214,7 +214,7 @@ async def test_judge_cost_fallback_counts_question_text(monkeypatch):
 @pytest.mark.asyncio
 async def test_panel_cost_fallback_counts_session_history(monkeypatch, tmp_path):
     # Only a panel provider is priced and reports no usage; in session mode its cost
-    # must reflect the reconstructed history it was actually sent, not just the prompt.
+    # must reflect the reconstructed history it was sent, not just the prompt.
     monkeypatch.setattr(sessions, "DEFAULT_SESSIONS_DIR", str(tmp_path))
     mapping = all_ok_mapping()
     mapping["a"] = FakeChatProvider("a", text="answer from a", usage=TokenUsage())
@@ -522,7 +522,7 @@ async def test_rendered_markdown_carries_the_numbers_behind_each_finding(monkeyp
 
 async def test_every_branch_carries_the_jev_cost_key(monkeypatch):
     """`cost_basis.jev_usd` must be readable unconditionally, and must stay null when
-    nothing priced the judging — null and 0.0 are different answers."""
+    nothing priced the judging - null and 0.0 are different answers."""
     from orchestrator.fakes import FakeJevClient
     from orchestrator.settings import JudgeConfig
 

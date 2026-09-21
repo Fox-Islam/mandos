@@ -36,7 +36,7 @@ abstractions.
 ## Scope
 
 Keep changes surgical. Do not vendor third-party source or model weights.
-**Secrets never live in config or the repo** — providers reference an env var by
+**Secrets never live in config or the repo** - providers reference an env var by
 name (`api_key_env`); keep token values only in `~/.mandos/.env` (0600), never
 in the config file.
 

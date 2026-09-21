@@ -1,4 +1,4 @@
-"""Write secret tokens to ``~/.mandos/.env`` at 0600 (plan §12.2 token rule).
+"""Write secret tokens to ``~/.mandos/.env`` at 0600.
 
 Merge-not-clobber: existing keys are preserved, provided keys updated. Token values
 are never echoed or logged; the config stores only ``api_key_env`` names.

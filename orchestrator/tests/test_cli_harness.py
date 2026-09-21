@@ -1,4 +1,4 @@
-"""Phase 11 — harness wiring (idempotent, backup-first, never-clobber)."""
+"""Harness wiring (idempotent, backup-first, never-clobber)."""
 
 from __future__ import annotations
 

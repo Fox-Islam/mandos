@@ -15,7 +15,7 @@ def build_jev_client(judge, http_client: httpx.AsyncClient) -> JevClient | None:
     """A configured client, or ``None`` when the selected shape needs no Jev at all.
 
     Shares the pipeline's pooled ``httpx.AsyncClient`` so the judge call reuses the
-    connection rather than paying for a fresh TLS handshake — worth more than everything
+    connection instead of paying for a fresh TLS handshake - worth more than everything
     else here put together, per the jevsort latency measurements.
     """
     if not judge.uses_jev:

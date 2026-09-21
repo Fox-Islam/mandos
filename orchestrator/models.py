@@ -8,11 +8,11 @@ ReasoningEffort = Literal["low", "medium", "high"]
 
 # How the judge produces its analysis. Jev shapes return calibrated probabilities;
 # ``llm`` is the generative fallback that Fusion-style deliberation started from.
-# ``probe`` does no deliberation at all -- it only reports what the answers lacked.
+# ``probe`` does no deliberation at all - it only reports what the answers lacked.
 JudgeShape = Literal["hybrid", "matrix", "verify", "probe", "llm"]
 # ``unsupported`` has no narrative counterpart: it is a claim the extractor proposed
-# that no panel answer turned out to back. Kept because it measures the extraction
-# pass rather than the panel, and that is worth seeing.
+# that no panel answer backs. Kept because it measures the extraction pass instead of
+# the panel.
 ClaimRole = Literal[
     "consensus",
     "contradiction",
@@ -174,7 +174,7 @@ class PairAgreement(BaseModel):
 
 class AnswerProfile(BaseModel):
     """Rubric readings for one panel answer. Each is an expectation over an ordered
-    rubric, so it lands between levels — that in-between value is the signal."""
+    rubric, so it lands between levels."""
 
     model_config = ConfigDict(extra="forbid")
     id: str
@@ -201,7 +201,7 @@ class Calibration(BaseModel):
     Which blocks are populated depends on ``shape``: ``hybrid`` and ``verify`` fill
     ``claims``; ``matrix`` fills ``agreement``, ``per_answer``, ``outlier`` and
     ``panel_agreement``. ``llm`` produces no calibration at all, and the field is then
-    ``None`` on the analysis rather than an empty block, so "not measured" and
+    ``None`` on the analysis instead of an empty block, so "not measured" and
     "measured as nothing" stay distinguishable.
     """
 
@@ -222,14 +222,14 @@ class NeedsEvidence(BaseModel):
     """Something the panel said it was missing, and how much it mattered.
 
     Distinct from ``blind_spots``, which is "nobody addressed this". This is "nobody
-    *could* address this, because the information was not in front of them" — the only
+    *could* address this, because the information was not in front of them" - the only
     one of the two a caller can act on, by fetching it and asking again.
     """
 
     model_config = ConfigDict(extra="forbid")
     item: str
-    # P(the answers genuinely lacked this rather than merely omitting it). ``None`` when
-    # a generative judge asserted the gap instead of Jev measuring it — an asserted gap
+    # P(the answers genuinely lacked this instead of merely omitting it). ``None`` when
+    # a generative judge asserted the gap instead of Jev measuring it - an asserted gap
     # is still worth acting on, but the absence of a number says which it is.
     lacked: float | None = Field(default=None, ge=0, le=1)
     # P(having it would change the answer). Low means fetching it is not worth a rerun.

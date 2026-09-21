@@ -1,21 +1,21 @@
 """The probe judge: no deliberation, only what the answers were missing.
 
-The other shapes all read a panel *against itself* — who agreed, who disagreed, who
+The other shapes all read a panel *against itself* - who agreed, who disagreed, who
 raised something nobody else did. This one does none of that. It asks a single
 question: what would you have had to know to answer this properly, and did anyone
 have it?
 
 That makes it the cheapest shape and the one to use with a panel of one. Measured
 over 16 questions whose answers each turn on a fact nobody was given, a single model
-put through this loop scored 16/16 where the same model alone scored 12/16 — and where
+put through this loop scored 16/16 where the same model alone scored 12/16 - and where
 a two-member panel with full claim adjudication scored 15/16 at more than twice the
 cost.
 
 The caveat travels with the number. Those questions were built so that a missing fact
 decides the answer, which is exactly the shape that rewards asking for evidence and
 gives deliberation nothing to do. On a question where the panel has everything it
-needs and still disagrees, this shape reports nothing useful and ``hybrid`` is the one
-that earns its cost.
+needs and still disagrees, this shape reports nothing useful and ``hybrid`` is the
+shape to use.
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ from orchestrator.judge.jev_common import DEFAULT_QUESTIONS_PER_CALL, ask_all, b
 from orchestrator.judge.outcome import JudgeOutcome
 from orchestrator.models import Analysis, Calibration, NeedsEvidence, RawAnswer
 
-# Above this, the answers genuinely lacked the item rather than merely omitting it.
+# Above this, the answers genuinely lacked the item instead of merely omitting it.
 LACKED = 0.5
 
 
@@ -38,7 +38,7 @@ def build_questions(
 ) -> dict[str, dict[str, Any]]:
     """Two questions per candidate, plus the per-answer readings.
 
-    No support matrix, no contested question, no standing rubric — for a panel of one
+    No support matrix, no contested question, no standing rubric - for a panel of one
     those measure nothing, and for a larger panel they are what ``hybrid`` is for.
     """
     questions: dict[str, dict[str, Any]] = {}

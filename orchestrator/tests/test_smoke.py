@@ -1,7 +1,7 @@
 """Smoke tests: package import + the MCP tool surface over an in-memory Client.
 
-There is no REST app; the only transport is stdio (plan §6). We assert the tool
-surface through FastMCP's in-memory ``Client`` rather than spinning up a process.
+There is no REST app; the only transport is stdio. We assert the tool
+surface through FastMCP's in-memory ``Client`` instead of spinning up a process.
 """
 
 from __future__ import annotations

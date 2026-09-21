@@ -1,5 +1,5 @@
 """Wire Claude Code: ``mcpServers.mandos`` in ``~/.claude.json`` (global) or a
-project ``.mcp.json`` (workspace) — plan §11.1."""
+project ``.mcp.json`` (workspace)"""
 
 from __future__ import annotations
 

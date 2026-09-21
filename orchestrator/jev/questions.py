@@ -3,15 +3,15 @@
 Jev (TypeSafe's System One model) does not write prose: you hand it a *state* and a
 map of named *questions*, and it answers each one in the shape that question asked
 for. That is the whole reason it makes a better deliberation judge than a generative
-model — there is no JSON to parse out of a fenced code block, and every answer
-carries a calibrated probability rather than an adjective.
+model - there is no JSON to parse out of a fenced code block, and every answer
+carries a calibrated probability instead of an adjective.
 
 The wire format mirrors ``phox/typesafe-sdk-php``: each question is
 ``{"type": ..., "instructions": ..., "criteria": ...}`` keyed by the name its answer
 comes back under. ``criteria`` is the option map for a choice, the ordered rubric for
 a score, and the optional yes/no guidance for a noul.
 
-Every reader tolerates a malformed or missing answer and falls back rather than
+Every reader tolerates a malformed or missing answer and falls back instead of
 raising: one odd reply must not fail a deliberation (mirrors the panel's
 partial-results rule).
 """
@@ -76,7 +76,7 @@ def score(instructions: str, levels: list[str]) -> dict[str, Any]:
 
     The answer is an *expectation*, so it falls between levels: a 0.4 on a
     ``[low, medium, high]`` rubric means the model leans low but is not certain. That
-    is the point — a judge that reports 1.4 tells the author more than one that picks
+    is the point - a judge that reports 1.4 tells the author more than one that picks
     "medium" and hides the doubt.
     """
     if len(levels) < 2:
@@ -134,7 +134,7 @@ def noul_confidence(answer: Any) -> float | None:
     """How decisive a yes/no answer was, in [0, 1].
 
     Jev reports a ``confidence`` for ``choice`` and ``score`` answers but **not** for
-    ``noul`` — verified against the live API. Every claim-level judgement is a noul, so
+    ``noul`` - verified against the live API. Every claim-level judgement is a noul, so
     reading ``confidence`` straight off one always yields ``None`` and the field is
     dead where it matters most.
 

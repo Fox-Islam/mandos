@@ -1,4 +1,4 @@
-"""Phase 3 — config & roles: validation, JSON/YAML parity, the .env loader."""
+"""Config & roles: validation, JSON/YAML parity, the .env loader."""
 
 from __future__ import annotations
 
@@ -181,7 +181,7 @@ def test_status_budget_only_for_enabled_providers():
 
 def test_context_window_and_budget_fields_are_status_visible():
     cfg = MandosConfig(
-        # max_tokens is pinned so this measures the budget fields rather than whatever
+        # max_tokens is pinned so this measures the budget fields instead of whatever
         # the default output ceiling happens to be.
         defaults=Defaults(max_tokens=1024),
         providers=[

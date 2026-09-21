@@ -1,4 +1,4 @@
-"""Phase 8 — config + secret writers."""
+"""Config + secret writers."""
 
 from __future__ import annotations
 

@@ -50,7 +50,7 @@ def _turns_from_jsonl(path: Path, limit: int) -> list[dict[str, str]]:
     """Read the tail of a harness transcript into plain role/content turns.
 
     Tolerant by design: transcript formats differ between harnesses and change between
-    versions, so anything unrecognised is skipped rather than guessed at.
+    versions, so anything unrecognised is skipped instead of guessed at.
     """
     turns: list[dict[str, str]] = []
     try:

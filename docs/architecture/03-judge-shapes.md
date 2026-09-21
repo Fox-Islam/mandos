@@ -1,14 +1,11 @@
 # Judge Shapes and the Analysis Contract
 
-> This page is the source of truth for what the judge returns. It replaces the
-> earlier "Fusion structured analysis and curation" page: the curation pass was
-> removed on 2026-06-19, and the generative analyst was demoted to a fallback on
-> 2026-09-21 when Jev became the judge.
+> This page is the source of truth for what the judge returns.
 
 ## Pipeline
 
 ```text
-panel providers -> judge (one of four shapes) -> host author
+panel providers -> judge (one of five shapes) -> host author
 ```
 
 The judge analyses; it never authors. Whatever shape runs, all successful raw panel
@@ -22,16 +19,17 @@ the judge produced nothing.
 | `hybrid` | 1 (claim extraction) | 1+ | derived from Jev's numbers | `claims[]`, `per_answer[]` |
 | `matrix` | 0 | 1+ | none | `agreement[]`, `per_answer[]`, `outlier`, `panel_agreement` |
 | `verify` | 1 (the analysis) | 1+ | written by the analyst | `claims[]` (one `holds` per finding) |
+| `probe` | 1 (gap extraction) | 1+ | none - only `needs_evidence` | `per_answer[]` |
 | `llm` | 1 (the analysis) | 0 | written by the analyst | `null` |
 
-`calibration` is `null` — not an empty block — when nothing was measured, so "not
+`calibration` is `null` - not an empty block - when nothing was measured, so "not
 measured" and "measured as nothing" stay distinguishable.
 
 ### hybrid
 
 1. One temperature-0 call asks an analyst for the propositions worth testing and the
    gaps worth checking. It does **not** judge, rank or attribute; it only lists.
-   Capped at 12 claims and 6 blind spots.
+   Capped at 12 claims, 6 blind spots and 10 missing-evidence items.
 2. One Jev call asks, for each claim: *does the answer from `<id>` support this?*
    (once per panel member), *do the answers genuinely disagree about this?*, and a
    three-level rubric for how well the panel as a whole supports it. Each proposed
@@ -48,7 +46,7 @@ measured" and "measured as nothing" stay distinguishable.
 | `consensus[]` | every panel member scored ≥ 0.6 |
 | `unique_insights[]` | exactly one member scored ≥ 0.6 |
 | `partial_coverage[]` | some but not all members scored ≥ 0.6 |
-| *(dropped from the narrative)* | no member scored ≥ 0.6 — kept as `role: "unsupported"` |
+| *(dropped from the narrative)* | no member scored ≥ 0.6 - kept as `role: "unsupported"` |
 | `blind_spots[]` | unaddressed ≥ 0.5 |
 | `needs_evidence[]` | lacked ≥ 0.5, sorted by how much having it would change the answer |
 
@@ -58,23 +56,23 @@ The gap between the 0.6 backing threshold and the 0.4 dissent threshold is
 deliberate: an answer that simply did not address a claim lands in the middle and must
 not be read as either agreement or dissent. That is what `partial_coverage` carries.
 
-A contested claim is split at the **lower** threshold — see
+A contested claim is split at the **lower** threshold - see
 [A threshold that had to move](#a-threshold-that-had-to-move).
 
-An `unsupported` claim measures the *extraction* pass, not the panel — the analyst
+An `unsupported` claim measures the *extraction* pass, not the panel - the analyst
 proposed something no answer turned out to back. `confidence_notes` reports the count.
 
 ### needs_evidence
 
 The extraction pass also lists information the answers did not have and would have
-needed — a file, a schema, a version, a measurement — taken from what they say they are
+needed - a file, a schema, a version, a measurement - taken from what they say they are
 assuming, guessing at or asking for. Jev then settles two questions per item: *did the
-answers lack this, rather than simply not mention it?* and *would having it change the
+answers lack this, instead of simply not mention it?* and *would having it change the
 answer?*
 
-This is deliberately **not** `blind_spots`. A blind spot is something nobody addressed;
+This is **not** `blind_spots`. A blind spot is something nobody addressed;
 this is something nobody *could* address, because it was not in front of them. Only the
-second is actionable, and only by the caller — the harness is the one party that can
+second is actionable, and only by the caller - the harness is the one party that can
 read the file or run the query. So it is reported as a field and never as a failure:
 the first pass still returns a real analysis, and whether to fetch and call again is the
 calling model's decision, capped by the `depth` guard when it chains.
@@ -86,7 +84,7 @@ by it.
 
 One Jev call, no generative model. For an eight-member panel: 28 pairwise agreement
 questions, three readings per answer (hedging, scope, distinctiveness), plus an
-outlier choice and an overall agreement rubric — 54 questions in one round trip.
+outlier choice and an overall agreement rubric - 54 questions in one round trip.
 
 Produces no `consensus`/`contradictions`; the narrative fields stay empty and the
 reading lives entirely in `calibration`.
@@ -94,10 +92,26 @@ reading lives entirely in `calibration`.
 ### verify
 
 The generative analyst runs unchanged, then one Jev call puts each of its findings as
-a yes/no: is this consensus item actually supported by every answer? is this
+a yes/no: is this consensus item supported by every answer? is this
 contradiction real? is this insight really unique to that member? Nothing is rewritten
-or deleted — each finding keeps its index and gains `holds`, and the tally is appended
+or deleted - each finding keeps its index and gains `holds`, and the tally is appended
 to `confidence_notes`.
+
+### probe
+
+No deliberation at all. The analyst is asked only for the gap list, under a narrower
+prompt than `hybrid`'s - it returns `missing_evidence` alone, instead of a full
+extraction whose claims are then thrown away. Jev settles the same two questions per
+item that [needs_evidence](#needs_evidence) describes, plus the per-answer readings. No
+support matrix, no contested question, no standing rubric.
+
+Everything else in the analysis stays empty, so `needs_evidence` is the whole result.
+That makes it the only shape worth running with a panel of one - with nobody to
+disagree with, the questions the other shapes ask measure nothing.
+
+Use it when the answer turns on a fact nobody was given. When the panel has what it
+needs and still disagrees, it reports nothing and `hybrid` is the shape that earns its
+cost. See [Measured](#measured) for the numbers behind both halves of that.
 
 ## Measured
 
@@ -121,7 +135,7 @@ reason for a shape to ask less than it wants to know.
 **The probabilities separate cleanly.** On the claim only one member made, that member
 scored 0.98 and the rest 0.04. On the claim three of four made, the three scored
 0.97–0.99 and the fourth 0.04. A member that implied a claim without stating it scored
-0.76 against 0.98 for the two that stated it outright — the graded floor a threshold
+0.76 against 0.98 for the two that stated it outright - the graded floor a threshold
 alone would have hidden.
 
 `hybrid` is the default: it is the only shape that produces the full narrative *and*
@@ -131,16 +145,16 @@ analyst chose to write, so it inherits the analyst's omissions.
 
 ### A threshold that had to move
 
-The first live run exposed a defect in this derivation rather than in Jev. The lone
+The first live run exposed a defect in this derivation instead of in Jev. The lone
 member backing the contested option scored **0.59–0.60** across repeats while the
 other three sat at 0.02. Splitting a contested claim at `SUPPORT_HIGH` (0.6) therefore
-produced a contradiction twice and `unsupported` once — on a third of runs the panel's
+produced a contradiction twice and `unsupported` once - on a third of runs the panel's
 sharpest disagreement, which Jev had flagged at `contested = 0.85`, vanished from the
 analysis entirely.
 
 A contested claim is now split at `SUPPORT_LOW` instead: when Jev says the panel
 disagrees, the question is who is on which side, and the right cut is "clearly rejects"
-versus "does not clearly reject" — not the stricter bar used to *assert* a consensus.
+versus "does not clearly reject" - not the stricter bar used to *assert* a consensus.
 Uncontested claims still need real backing. Both cases are pinned by tests.
 
 ## The response
@@ -186,14 +200,14 @@ Uncontested claims still need real backing. Both cases are pinned by tests.
 `confidence` on a claim is **derived**, not reported: Jev returns a `confidence` for
 `choice` and `score` answers but not for `noul`, and every claim-level judgement is a
 noul. A probability is its own confidence, so the distance from maximal uncertainty is
-mapped onto [0, 1] — 0.5 becomes 0.0, either extreme becomes 1.0. A reported
+mapped onto [0, 1] - 0.5 becomes 0.0, either extreme becomes 1.0. A reported
 confidence, where one exists, still wins.
 
 `role` and `index` point back into the narrative field a claim produced or verified
 (`consensus[0]`, `contradictions[2]`, …), so an author joins prose to evidence without
 matching on claim text.
 
-`holds` and `standing` are deliberately separate fields: `holds` is a probability in
+`holds` and `standing` are separate fields: `holds` is a probability in
 [0, 1] that a finding is borne out; `standing` is an expectation over a three-level
 rubric. Collapsing them would silently mix scales.
 
@@ -207,6 +221,10 @@ The tool response around it:
 - `meta.jev_calls` / `meta.jev_questions` count the decision calls;
   `meta.cost_basis.jev_usd` is Jev's own reported charge, or `null` when the provider
   did not price it
+- `meta.evidence_outstanding` counts the `needs_evidence` entries scoring
+  `would_change >= 0.5`, and `meta.passes_remaining` is
+  `defaults.max_depth - depth - 1`. Both above zero means another pass is both
+  worthwhile and permitted; either at zero ends the loop
 
 ## Degradation
 
@@ -217,9 +235,14 @@ Each shape has an ordered fallback chain, tried until one produces an analysis:
 | `hybrid` | `matrix`, then `llm` |
 | `matrix` | `llm` |
 | `verify` | `llm` (its analysis survives ungraded) |
+| `probe` | none |
 
-`hybrid` falls to `matrix` first on purpose. Most of what stops it — an analyst that is
-unreachable, or that proposed nothing because the panel agreed — says nothing about
+`probe` has no chain. Every other shape deliberates, so falling back from `probe`
+would answer a question the caller did not ask; it returns `analysis: null` with
+`meta.judge_error` instead.
+
+`hybrid` falls to `matrix` first on purpose. Most of what stops it - an analyst that is
+unreachable, or that proposed nothing because the panel agreed - says nothing about
 whether Jev is reachable, and dropping straight to a generative judge would throw away
 the calibration for no reason. Only when Jev itself is gone does anything reach `llm`.
 
@@ -230,6 +253,7 @@ the calibration for no reason. Only when Jev itself is gone does anything reach 
 | A batch partially fails | the analysis stands on the answers that came back; a missing answer reads as maximal uncertainty; `meta.judge_error` says so |
 | `hybrid` extraction returns nothing usable | fall back to `matrix`, which needs no analyst |
 | `verify` verification fails | the analyst's analysis survives with `calibration: null`; shape reports as `llm` |
+| `probe` extraction proposes no gaps | `analysis: null`, `meta.judge_error`; no fallback runs |
 | The `llm` judge returns malformed JSON | `meta.judge_error`, `analysis: null` |
 
 Raw panel answers return in every one of these cases.
