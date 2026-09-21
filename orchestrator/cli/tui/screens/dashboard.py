@@ -1,4 +1,4 @@
-"""Main dashboard screen for the Imladris configurator."""
+"""Main dashboard screen for the Mandos configurator."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ from orchestrator.model_catalog import (
     resolve_model_metadata,
 )
 
-BRAND_TITLE = "imladris"
+BRAND_TITLE = "mandos"
 BRAND_SUBTITLE = "Council Configurator"
 BRAND_LEFT_MARK = "Fëanor's Code"
 BRAND_RIGHT_MARK = "O(log n)"
@@ -29,11 +29,11 @@ NODE = "◆"
 ACCENT = "✦"
 
 WORDMARK: tuple[str, ...] = (
-    "    _           __          __     _     ",
-    "   (_)___ ___  / /___ _____/ /____(_)____",
-    "  / / __ `__ \\/ / __ `/ __  / ___/ / ___/",
-    " / / / / / / / / /_/ / /_/ / /  / (__  ) ",
-    "/_/_/ /_/ /_/_/\\__,_/\\__,_/_/  /_/____/  ",
+    "                              __          ",
+    "   ____ ___  ____ _____  ____/ /___  _____",
+    "  / __ `__ \\/ __ `/ __ \\/ __  / __ \\/ ___/",
+    " / / / / / / /_/ / / / / /_/ / /_/ (__  ) ",
+    "/_/ /_/ /_/\\__,_/_/ /_/\\__,_/\\____/____/  ",
 )
 
 DashboardAction = tuple[str, str]
@@ -83,7 +83,7 @@ class DashboardScreen(Screen[None]):
 
     def _decorate_frames(self) -> None:
         outer = self.query_one("#dashboard", Vertical)
-        outer.border_title = f"{ACCENT}  imladris  {ACCENT}"
+        outer.border_title = f"{ACCENT}  mandos  {ACCENT}"
         outer.border_subtitle = "↑↓ navigate · enter select"
         self.query_one("#dashboard-nav", Vertical).border_title = f"{NODE} Actions {NODE}"
 
@@ -237,11 +237,13 @@ class DashboardScreen(Screen[None]):
                     ("edit", "Edit selected member"),
                     ("delete", "Delete selected member"),
                     ("roles", "Reassign roles"),
+                    ("judge", "Edit judge"),
                     ("defaults", "Run defaults"),
                 ]
             )
         else:
             actions.append(("wire", WIRE_HARNESSES_LABEL))
+            actions.append(("judge", "Edit judge"))
             actions.append(("defaults", "Run defaults"))
             actions.append(("refresh", "Refresh model catalog"))
             actions.append(("quit", "Quit"))
@@ -260,10 +262,26 @@ class DashboardScreen(Screen[None]):
 
     def _roles_summary(self, draft: Draft, width: int) -> str:
         return (
-            f"{NODE} Roles    Judge = "
-            f"{self._member_label(draft, draft.defaults.analysis_model, width)}"
+            f"{NODE} Roles    Judge = {self._judge_summary(draft, width)}"
             f"    Budget = {self._budget_summary(draft)}"
         )
+
+    def _judge_summary(self, draft: Draft, width: int) -> str:
+        """Name the judge that will actually decide.
+
+        For a Jev shape the analyst is a supporting act (or absent), so leading with
+        the chat provider would misreport what is doing the judging.
+        """
+        analyst = self._member_label(draft, draft.defaults.analysis_model, width)
+        if not draft.judge.uses_jev:
+            return f"{analyst} (llm)"
+        # No square brackets: this Static renders Rich markup, which would eat
+        # "[set]" as a style tag and drop the key state from the summary entirely.
+        key_state = self._token_status(draft, draft.judge.resolved_api_key_env)
+        jev = f"{draft.judge.model} via {draft.judge.provider}, key {key_state}"
+        if draft.judge.shape == "matrix":
+            return f"{jev} (matrix)"
+        return f"{jev} ({draft.judge.shape}, analyst {analyst})"
 
     def _member_label(self, draft: Draft, member_id: str | None, width: int) -> str:
         if member_id is None:
@@ -379,6 +397,8 @@ class DashboardScreen(Screen[None]):
             self.action_delete_member()
         elif action_id == "roles":
             self.action_reassign_roles()
+        elif action_id == "judge":
+            self.action_edit_judge()
         elif action_id == "defaults":
             self.action_run_defaults()
         elif action_id == "refresh":
@@ -426,6 +446,14 @@ class DashboardScreen(Screen[None]):
 
         self.app.push_screen(RolesScreen(dashboard=self))
 
+    def action_edit_judge(self) -> None:
+        draft = self.app.draft
+        if draft is None or draft.parse_errors:
+            return
+        from orchestrator.cli.tui.screens.judge import JudgeScreen
+
+        self.app.push_screen(JudgeScreen(dashboard=self))
+
     def action_run_defaults(self) -> None:
         draft = self.app.draft
         if draft is None or draft.parse_errors:
@@ -464,7 +492,7 @@ class DashboardScreen(Screen[None]):
         )
 
     def _catalog_cache_path(self) -> Path:
-        return self.app.home / ".imladris" / "model-catalog-cache.json"
+        return self.app.home / ".mandos" / "model-catalog-cache.json"
 
     def _handle_catalog_worker(self, worker: Worker, state: WorkerState) -> None:
         if state == WorkerState.SUCCESS and isinstance(worker.result, CatalogRefreshResult):

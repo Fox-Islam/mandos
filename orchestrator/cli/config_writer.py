@@ -1,7 +1,7 @@
-"""Build and persist ``~/.imladris/config.json`` from configurator answers.
+"""Build and persist ``~/.mandos/config.json`` from configurator answers.
 
 Pure compatibility functions: callers provide :class:`WizardAnswers`, these turn
-them into a validated :class:`ImladrisConfig` and write pretty JSON. Secrets never
+them into a validated :class:`MandosConfig` and write pretty JSON. Secrets never
 appear here — providers carry only an ``api_key_env`` name.
 """
 
@@ -16,12 +16,13 @@ from orchestrator.cli.config_ops import add_member, set_judge
 from orchestrator.settings import (
     ContextWindowSource,
     Defaults,
-    ImladrisConfig,
+    JudgeConfig,
+    MandosConfig,
     ProviderDescriptor,
     _strip_legacy_config,
 )
 
-DEFAULT_CONFIG_PATH = "~/.imladris/config.json"
+DEFAULT_CONFIG_PATH = "~/.mandos/config.json"
 DEFAULT_PRESET_NAME = "council"
 
 
@@ -48,10 +49,13 @@ class WizardAnswers:
     timeout_s: float = 90
     include_local_only: bool = True
     pricing: dict[str, dict[str, float]] = field(default_factory=dict)
+    judge: JudgeConfig = field(default_factory=JudgeConfig)
+    # The Jev key, like every other secret, goes to .env and never to the config.
+    judge_token: str | None = None
 
 
-def build_config(answers: WizardAnswers) -> ImladrisConfig:
-    """Assemble a validated :class:`ImladrisConfig`.
+def build_config(answers: WizardAnswers) -> MandosConfig:
+    """Assemble a validated :class:`MandosConfig`.
 
     Every member is a panellist; the chosen ``analysis_model`` additionally gets the
     ``judge`` role. Raises if the roster is empty or exceeds 8 (via model validation).
@@ -59,7 +63,7 @@ def build_config(answers: WizardAnswers) -> ImladrisConfig:
     if not answers.members:
         raise ValueError("a council needs at least one member")
 
-    config: ImladrisConfig | None = None
+    config: MandosConfig | None = None
     for m in answers.members:
         config = add_member(
             config,
@@ -82,6 +86,7 @@ def build_config(answers: WizardAnswers) -> ImladrisConfig:
     config = set_judge(config, answers.analysis_model)
 
     data = config.model_dump(by_alias=True, exclude_none=True)
+    data["judge"] = answers.judge.model_dump(exclude_none=True)
     data["defaults"] = Defaults(
         preset=answers.preset_name,
         analysis_model=answers.analysis_model,
@@ -94,15 +99,19 @@ def build_config(answers: WizardAnswers) -> ImladrisConfig:
     data["pricing"] = {
         k: {"in": v.get("in", 0), "out": v.get("out", 0)} for k, v in answers.pricing.items()
     }
-    return ImladrisConfig.model_validate(_strip_legacy_config(data, warn=True))
+    return MandosConfig.model_validate(_strip_legacy_config(data, warn=True))
 
 
 def env_from_members(answers: WizardAnswers) -> dict[str, str]:
-    """Return ``{api_key_env: token}`` for members that carry a token."""
-    return {m.api_key_env: m.token for m in answers.members if m.api_key_env and m.token}
+    """Return ``{api_key_env: token}`` for members that carry a token, plus the Jev
+    judge's key when one was supplied."""
+    values = {m.api_key_env: m.token for m in answers.members if m.api_key_env and m.token}
+    if answers.judge.uses_jev and answers.judge_token:
+        values[answers.judge.resolved_api_key_env] = answers.judge_token
+    return values
 
 
-def write_config(config: ImladrisConfig, path: str | Path = DEFAULT_CONFIG_PATH) -> Path:
+def write_config(config: MandosConfig, path: str | Path = DEFAULT_CONFIG_PATH) -> Path:
     """Write pretty JSON, creating the directory and backing up any existing file."""
     target = Path(path).expanduser()
     target.parent.mkdir(parents=True, exist_ok=True)

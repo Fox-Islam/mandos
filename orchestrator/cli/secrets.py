@@ -1,4 +1,4 @@
-"""Write secret tokens to ``~/.imladris/.env`` at 0600 (plan §12.2 token rule).
+"""Write secret tokens to ``~/.mandos/.env`` at 0600 (plan §12.2 token rule).
 
 Merge-not-clobber: existing keys are preserved, provided keys updated. Token values
 are never echoed or logged; the config stores only ``api_key_env`` names.
@@ -9,7 +9,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-DEFAULT_ENV_PATH = "~/.imladris/.env"
+DEFAULT_ENV_PATH = "~/.mandos/.env"
 
 
 def expand_user_path(path: str | Path) -> Path:
@@ -17,7 +17,7 @@ def expand_user_path(path: str | Path) -> Path:
 
     Windows' ``Path.expanduser()`` ignores a monkeypatched ``HOME`` when
     ``USERPROFILE`` is set. The CLI tests use ``HOME`` to isolate user-level
-    Imladris files, and real harnesses may also provide it explicitly.
+    Mandos files, and real harnesses may also provide it explicitly.
     """
     raw = os.fspath(path)
     if raw == "~":

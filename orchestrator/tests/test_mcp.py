@@ -14,9 +14,9 @@ from orchestrator.mcp_server import mcp
 
 def _write_config(tmp_path, monkeypatch, providers, **extra):
     cfg = {"providers": providers, **extra}
-    path = tmp_path / "imladris.json"
+    path = tmp_path / "mandos.json"
     path.write_text(json.dumps(cfg), encoding="utf-8")
-    monkeypatch.setenv("IMLADRIS_CONFIG", str(path))
+    monkeypatch.setenv("MANDOS_CONFIG", str(path))
     return path
 
 
@@ -25,7 +25,7 @@ async def test_tool_surface_and_council_prompt():
     async with Client(mcp) as client:
         tools = {t.name for t in await client.list_tools()}
         prompts = {p.name for p in await client.list_prompts()}
-    assert {"imladris", "imladris_status", "imladris_clear_sessions"} <= tools
+    assert {"mandos", "mandos_status", "mandos_clear_sessions"} <= tools
     assert "council" in prompts
     assert "council-session" in prompts
 
@@ -47,7 +47,7 @@ async def test_status_leaks_no_secrets(tmp_path, monkeypatch):
         ],
     )
     async with Client(mcp) as client:
-        result = await client.call_tool("imladris_status", {})
+        result = await client.call_tool("mandos_status", {})
     blob = json.dumps(result.data)
     assert "MY_SECRET_TOKEN" not in blob
     assert "topsecretvalue" not in blob
@@ -55,7 +55,7 @@ async def test_status_leaks_no_secrets(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_imladris_returns_clean_short_circuit_when_unreachable(tmp_path, monkeypatch):
+async def test_mandos_returns_clean_short_circuit_when_unreachable(tmp_path, monkeypatch):
     _write_config(
         tmp_path,
         monkeypatch,
@@ -71,7 +71,7 @@ async def test_imladris_returns_clean_short_circuit_when_unreachable(tmp_path, m
         ],
     )
     async with Client(mcp) as client:
-        result = await client.call_tool("imladris", {"prompt": "anything", "timeout_s": 5})
+        result = await client.call_tool("mandos", {"prompt": "anything", "timeout_s": 5})
     data = result.data
     assert data["meta"]["ok"] == 0
     assert data["meta"]["failure"] == "all_panels_failed"
@@ -84,7 +84,7 @@ async def test_imladris_returns_clean_short_circuit_when_unreachable(tmp_path, m
 async def test_input_schema_advertises_bounds_enums_descriptions():
     async with Client(mcp) as client:
         tools = {t.name: t for t in await client.list_tools()}
-    schema = tools["imladris"].inputSchema
+    schema = tools["mandos"].inputSchema
     blob = json.dumps(schema)
     assert '"maxLength": 200000' in blob
     assert '"maxItems": 8' in blob
@@ -98,7 +98,7 @@ async def test_input_schema_advertises_bounds_enums_descriptions():
 async def test_out_of_range_arg_rejected_at_protocol_boundary():
     async with Client(mcp) as client:
         with pytest.raises(ToolError):
-            await client.call_tool("imladris", {"prompt": "x", "temperature": 9})
+            await client.call_tool("mandos", {"prompt": "x", "temperature": 9})
 
 
 @pytest.mark.asyncio
@@ -119,7 +119,7 @@ async def test_status_discloses_egress_without_leaking_secrets(tmp_path, monkeyp
         ],
     )
     async with Client(mcp) as client:
-        result = await client.call_tool("imladris_status", {})
+        result = await client.call_tool("mandos_status", {})
     egress = {p["id"]: p["egress"] for p in result.data["providers"]}
     assert egress == {"local": "on-prem", "cloud": "off-prem"}
     blob = json.dumps(result.data)
@@ -134,9 +134,7 @@ async def test_invalid_thread_id_returns_typed_envelope_not_toolerror(tmp_path, 
         [{"id": "p", "base_url": "http://127.0.0.1:9/v1", "model": "m", "roles": ["panel"]}],
     )
     async with Client(mcp) as client:
-        result = await client.call_tool(
-            "imladris", {"prompt": "anything", "thread_id": "bad/thread"}
-        )
+        result = await client.call_tool("mandos", {"prompt": "anything", "thread_id": "bad/thread"})
     data = result.data
     assert data["meta"]["failure"] == "unexpected_error"
     assert data["meta"]["contract_version"] == "1"
@@ -162,7 +160,7 @@ async def test_config_load_error_does_not_leak_secrets(tmp_path, monkeypatch):
     )
     with capture_logs() as logs:
         async with Client(mcp) as client:
-            result = await client.call_tool("imladris", {"prompt": "anything"})
+            result = await client.call_tool("mandos", {"prompt": "anything"})
     data = result.data
     assert data["meta"]["failure"] == "unexpected_error"
     assert isinstance(data["text"], str) and data["text"]
@@ -192,7 +190,7 @@ async def test_status_config_load_error_does_not_leak_secrets(tmp_path, monkeypa
         ],
     )
     async with Client(mcp) as client:
-        result = await client.call_tool("imladris_status", {})
+        result = await client.call_tool("mandos_status", {})
 
     data = result.data
     assert data["ok"] is False

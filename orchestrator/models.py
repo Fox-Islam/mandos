@@ -6,6 +6,21 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 ReasoningEffort = Literal["low", "medium", "high"]
 
+# How the judge produces its analysis. Jev shapes return calibrated probabilities;
+# ``llm`` is the generative fallback that Fusion-style deliberation started from.
+JudgeShape = Literal["hybrid", "matrix", "verify", "llm"]
+# ``unsupported`` has no narrative counterpart: it is a claim the extractor proposed
+# that no panel answer turned out to back. Kept because it measures the extraction
+# pass rather than the panel, and that is worth seeing.
+ClaimRole = Literal[
+    "consensus",
+    "contradiction",
+    "partial_coverage",
+    "unique_insight",
+    "blind_spot",
+    "unsupported",
+]
+
 # Single source of truth for the session-id shape (sessions.py compiles this too).
 THREAD_ID_PATTERN = r"^[A-Za-z0-9_-]{1,64}$"
 
@@ -111,6 +126,88 @@ class UniqueInsight(BaseModel):
     insight: str
 
 
+class ClaimSupport(BaseModel):
+    """How strongly one panel member's answer backs one claim."""
+
+    model_config = ConfigDict(extra="forbid")
+    id: str
+    support: float = Field(ge=0, le=1)
+
+
+class CalibratedClaim(BaseModel):
+    """One claim Jev was asked about, with the numbers it answered.
+
+    ``role`` and ``index`` point back into the narrative field this claim produced or
+    verified (``consensus[3]``, ``contradictions[0]``, ...), so an author can join the
+    prose to its evidence without matching on claim text.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    role: ClaimRole
+    index: int = Field(ge=0)
+    claim: str
+    support: list[ClaimSupport] = Field(default_factory=list)
+    contested: float | None = Field(default=None, ge=0, le=1)
+    # Probability the finding is borne out by the panel. Kept separate from
+    # ``standing`` because they are on different scales and mean different things:
+    # ``holds`` is a probability, ``standing`` an expectation over a three-level rubric.
+    holds: float | None = Field(default=None, ge=0, le=1)
+    standing: float | None = None
+    confidence: float | None = Field(default=None, ge=0, le=1)
+
+
+class PairAgreement(BaseModel):
+    """Probability that two panel answers reach the same conclusion."""
+
+    model_config = ConfigDict(extra="forbid")
+    ids: list[str] = Field(min_length=2, max_length=2)
+    agreement: float = Field(ge=0, le=1)
+    confidence: float | None = Field(default=None, ge=0, le=1)
+
+
+class AnswerProfile(BaseModel):
+    """Rubric readings for one panel answer. Each is an expectation over an ordered
+    rubric, so it lands between levels — that in-between value is the signal."""
+
+    model_config = ConfigDict(extra="forbid")
+    id: str
+    hedging: float | None = None
+    scope: float | None = None
+    distinctive: float | None = Field(default=None, ge=0, le=1)
+
+
+class Outlier(BaseModel):
+    """Which answer the panel least resembles, and how sure Jev is of that."""
+
+    model_config = ConfigDict(extra="forbid")
+    id: str | None = None
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    probabilities: dict[str, float] = Field(default_factory=dict)
+
+
+class Calibration(BaseModel):
+    """The judge's numeric findings.
+
+    Which blocks are populated depends on ``shape``: ``hybrid`` and ``verify`` fill
+    ``claims``; ``matrix`` fills ``agreement``, ``per_answer``, ``outlier`` and
+    ``panel_agreement``. ``llm`` produces no calibration at all, and the field is then
+    ``None`` on the analysis rather than an empty block, so "not measured" and
+    "measured as nothing" stay distinguishable.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    shape: JudgeShape
+    model: str = ""
+    provider: str = ""
+    claims: list[CalibratedClaim] = Field(default_factory=list)
+    agreement: list[PairAgreement] = Field(default_factory=list)
+    per_answer: list[AnswerProfile] = Field(default_factory=list)
+    outlier: Outlier | None = None
+    panel_agreement: float | None = None
+    questions_asked: int = 0
+    calls: int = 0
+
+
 class Analysis(BaseModel):
     model_config = ConfigDict(extra="forbid")
     consensus: list[str] = Field(default_factory=list)
@@ -119,6 +216,7 @@ class Analysis(BaseModel):
     unique_insights: list[UniqueInsight] = Field(default_factory=list)
     blind_spots: list[str] = Field(default_factory=list)
     confidence_notes: str = ""
+    calibration: Calibration | None = None
 
     @model_validator(mode="after")
     def reject_empty_payload(self):

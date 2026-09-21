@@ -20,8 +20,8 @@ _DEFAULT_LEVEL = "INFO"
 def configure_logging(level: str | None = None, *, stream: TextIO | None = None) -> None:
     """Configure structlog to emit JSON lines to stderr (or ``stream`` for tests).
 
-    Level comes from the argument, then ``$IMLADRIS_LOG_LEVEL``, then INFO."""
-    name = (level or os.environ.get("IMLADRIS_LOG_LEVEL") or _DEFAULT_LEVEL).upper()
+    Level comes from the argument, then ``$MANDOS_LOG_LEVEL``, then INFO."""
+    name = (level or os.environ.get("MANDOS_LOG_LEVEL") or _DEFAULT_LEVEL).upper()
     numeric = getattr(logging, name, logging.INFO)
     structlog.configure(
         processors=[
@@ -35,6 +35,6 @@ def configure_logging(level: str | None = None, *, stream: TextIO | None = None)
     )
 
 
-def get_logger(name: str = "imladris"):
+def get_logger(name: str = "mandos"):
     """Return a bound logger. Safe to call at import time (lazy proxy)."""
     return structlog.get_logger(name)

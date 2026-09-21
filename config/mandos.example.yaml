@@ -1,9 +1,29 @@
+# The judge. `shape` decides what does the judging:
+#   hybrid  an analyst proposes claims, Jev decides them (the default)
+#   matrix  Jev alone -- pairwise agreement and per-answer rubrics, no analyst
+#   verify  the analyst writes the analysis, Jev grades each finding
+#   llm     the generative analyst alone, uncalibrated
+# Every shape but `llm` calls Jev and falls back to the analyst if Jev cannot
+# deliver. `api_key_env` is left unset so it follows `provider`.
+judge:
+  shape: hybrid
+  provider: typesafe          # or: openrouter
+  model: jev-latest
+  # base_url: https://jev.internal    # self-hosted or proxied endpoint
+  # api_key_env: MY_JEV_KEY           # default: TYPESAFE_API_KEY / OPENROUTER_API_KEY
+  timeout_s: 30
+  max_retries: 2
+  questions_per_call: 60
+
 defaults:
   preset: quality
+  # The generative analyst: proposes claims for `hybrid`, writes the analysis for
+  # `verify` and `llm`, and is the fallback whenever Jev is unreachable.
   analysis_model: local
   timeout_s: 90
   max_depth: 1
-  max_tokens: 1024
+  max_tokens: 4096
+  analysis_max_tokens: 8192
   budget_warning_ratio: 0.75
   budget_error_ratio: 0.90
   session_max_turns: 12
@@ -41,7 +61,7 @@ providers:
     base_url: https://openrouter.ai/api/v1
     model: google/gemini-2.5-pro
     api_key_env: OPENROUTER_API_KEY
-    headers: { "X-Title": "Imladris" }
+    headers: { "X-Title": "Mandos" }
     roles: [panel]
 
 presets:

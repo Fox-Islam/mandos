@@ -11,7 +11,7 @@ from orchestrator.panel import failure_response, run_deliberation
 from orchestrator.sessions import clear_sessions
 from orchestrator.settings import load_config, load_env_file
 
-mcp = FastMCP("imladris")
+mcp = FastMCP("mandos")
 
 
 def _safe_error(exc: Exception) -> str:
@@ -32,12 +32,12 @@ def _safe_error(exc: Exception) -> str:
         ]
         return "request or configuration is invalid: " + ("; ".join(parts) or "validation error")
     if isinstance(exc, FileNotFoundError):
-        return "no Imladris configuration found"
-    return "failed to load Imladris configuration"
+        return "no Mandos configuration found"
+    return "failed to load Mandos configuration"
 
 
 @mcp.tool()
-async def imladris(
+async def mandos(
     prompt: Annotated[
         str,
         Field(
@@ -51,7 +51,7 @@ async def imladris(
         Field(
             default=None,
             max_length=200_000,
-            description="Background appended to the prompt for every panellist and the judge.",
+            description="Background sent to every panellist and to the judge.",
         ),
     ] = None,
     thread_id: Annotated[
@@ -86,7 +86,11 @@ async def imladris(
         str | None,
         Field(
             default=None,
-            description="Override the judge; must be an enabled provider with the 'judge' role.",
+            description=(
+                "Override the generative analyst (proposes claims, or writes the "
+                "analysis, or is the fallback); must be an enabled 'judge'-role "
+                "provider. The judge shape itself is configured, not per call."
+            ),
         ),
     ] = None,
     max_tokens: Annotated[
@@ -115,8 +119,19 @@ async def imladris(
     return a structured analysis (consensus, disagreements, gaps, unique insights,
     blind spots) plus all raw panel answers. Use for research, expert critique,
     "compare and contrast", architecture/design trade-offs, or any task where being
-    wrong is costly. You (the calling model) remain the final author: read the
-    analysis + raw answers and write the answer.
+    wrong is costly.
+
+    The judging is done by a calibrated decision model, not a generative one, so every
+    finding arrives with the probabilities it was derived from in
+    `analysis.calibration` — joined to the prose by `role` and `index`. A consensus
+    whose weakest supporter scored 0.61 is a different instruction from the same
+    sentence at 0.94. Check `meta.judge_fallback_from`: if it is set, the calibrated
+    judge did not run and the analysis is an ordinary generative one.
+
+    The panel has no web access; put any facts it could not know in `context`.
+
+    You (the calling model) remain the final author: read the analysis, its numbers,
+    and the raw answers, then write the answer.
     """
     try:
         req = DeliberateRequest(
@@ -141,19 +156,20 @@ async def imladris(
 
 
 @mcp.tool()
-async def imladris_clear_sessions(thread_id: str | None = None) -> dict:
-    """Clear local Imladris council-session history.
+async def mandos_clear_sessions(thread_id: str | None = None) -> dict:
+    """Clear local Mandos council-session history.
 
     Pass a thread_id to clear one session, or omit it to clear all local session
-    JSON files under ~/.imladris/sessions.
+    JSON files under ~/.mandos/sessions.
     """
     return {"cleared": clear_sessions(thread_id=thread_id)}
 
 
 @mcp.tool()
-async def imladris_status() -> dict:
-    """Return resolved non-secret config: presets, provider roles, per-provider egress
-    (on-prem/off-prem), and advisory context-budget state. Performs no liveness probe.
+async def mandos_status() -> dict:
+    """Return resolved non-secret config: the judge (shape, Jev provider and model, its
+    endpoint's on-prem/off-prem egress), presets, provider roles, per-provider egress,
+    and advisory context-budget state. Performs no liveness probe.
 
     Never returns secret values or ``api_key_env`` names (plan §6.2).
     """
@@ -166,13 +182,21 @@ async def imladris_status() -> dict:
 @mcp.prompt(name="council")
 def council_prompt(question: str) -> str:
     return (
-        "Convene the council. Call the `imladris` tool with this question, then YOU "
+        "Convene the council. Call the `mandos` tool with this question, then YOU "
         "author the final answer from what it returns. Rules for authoring:\n"
         "- Read the structured analysis and the raw panel answers; the panel members "
         "are advisors, you are the author.\n"
+        "- Read `analysis.calibration` alongside the prose. Each finding carries the "
+        "probabilities it was derived from, joined by `role` and `index`. Weight a "
+        "finding by its numbers, not by the confidence of its phrasing: a consensus "
+        "whose weakest supporter scored near the threshold is a weak one, and saying "
+        "so is more useful than repeating it flatly.\n"
+        "- Numbers are evidence, not permission. A high score means the answers back "
+        "the claim consistently; the panel can be consistently wrong.\n"
+        "- If `meta.judge_fallback_from` is set, the calibrated judge did not run — "
+        "treat the analysis as one model's opinion and say so if it matters.\n"
         "- Preserve genuine contradictions and caveats — do not smooth them away.\n"
-        "- Give extra weight to consensus; flag where the panel was uncertain or "
-        "left blind spots unaddressed.\n"
+        "- Flag where the panel was uncertain or left blind spots unaddressed.\n"
         "- Attribute non-obvious or contested claims to their source where it helps "
         "the reader judge reliability.\n\n"
         f"Question: {question}"
@@ -182,10 +206,10 @@ def council_prompt(question: str) -> str:
 @mcp.prompt(name="council-session")
 def council_session_prompt(thread_id: str, question: str) -> str:
     return (
-        "Convene a stateful council session. Call the `imladris` tool with "
+        "Convene a stateful council session. Call the `mandos` tool with "
         f"`thread_id={thread_id!r}` and this question. Use a stable thread id matching "
         "`[A-Za-z0-9_-]{1,64}`. If you have authored a prior answer in this same "
-        "thread, pass it as `prior_answer` so Imladris can store it as the assistant "
+        "thread, pass it as `prior_answer` so Mandos can store it as the assistant "
         "turn. After the tool returns, YOU author the final answer from the structured "
         "analysis and raw panel answers.\n\n"
         f"Question: {question}"
@@ -193,7 +217,7 @@ def council_session_prompt(thread_id: str, question: str) -> str:
 
 
 def main() -> None:
-    """Console-script entry point (``imladris-mcp``): configure stderr logging, load
+    """Console-script entry point (``mandos-mcp``): configure stderr logging, load
     secrets, then serve stdio."""
     configure_logging()
     load_env_file()

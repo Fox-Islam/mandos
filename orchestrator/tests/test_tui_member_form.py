@@ -11,7 +11,7 @@ from textual.widgets import Input, Select, Static
 from textual.widgets._select import SelectOverlay
 
 from orchestrator.cli.catalog import catalog_options
-from orchestrator.cli.tui import ImladrisApp
+from orchestrator.cli.tui import MandosApp
 from orchestrator.cli.tui.screens.member_form import MemberFormScreen
 
 
@@ -49,11 +49,11 @@ def _harness_status() -> dict[str, bool]:
     return {"claude-code": True, "codex": True, "opencode": True}
 
 
-def _field(app: ImladrisApp, selector: str) -> Input:
+def _field(app: MandosApp, selector: str) -> Input:
     return app.screen.query_one(selector, Input)
 
 
-def _status(app: ImladrisApp) -> str:
+def _status(app: MandosApp) -> str:
     return str(app.screen.query_one("#form-status", Static).content)
 
 
@@ -69,14 +69,14 @@ async def _wait_for(pilot, predicate: Callable[[], bool], message: str) -> None:
     raise AssertionError(message)
 
 
-async def _open_add(app: ImladrisApp, pilot) -> MemberFormScreen:
+async def _open_add(app: MandosApp, pilot) -> MemberFormScreen:
     await pilot.press("left", "enter")
     await pilot.pause()
     assert isinstance(app.screen, MemberFormScreen)
     return app.screen
 
 
-async def _open_edit(app: ImladrisApp, pilot) -> MemberFormScreen:
+async def _open_edit(app: MandosApp, pilot) -> MemberFormScreen:
     await pilot.press("enter")
     await pilot.pause()
     assert isinstance(app.screen, MemberFormScreen)
@@ -97,7 +97,7 @@ async def test_add_member_form_arrow_keys_move_between_fields(tmp_path, monkeypa
     monkeypatch.setenv("HOME", str(tmp_path))
     config_path = tmp_path / "config.json"
 
-    app = ImladrisApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
+    app = MandosApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
     async with app.run_test(size=(120, 40)) as pilot:
         await _open_add(app, pilot)
 
@@ -121,7 +121,7 @@ async def test_add_member_form_search_filters_all_provider_presets(tmp_path, mon
     monkeypatch.setenv("HOME", str(tmp_path))
     config_path = tmp_path / "config.json"
 
-    app = ImladrisApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
+    app = MandosApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
     async with app.run_test(size=(120, 40)) as pilot:
         await _open_add(app, pilot)
         preset = app.screen.query_one("#preset", Select)
@@ -142,7 +142,7 @@ async def test_add_member_form_arrow_keys_navigate_expanded_select(tmp_path, mon
     monkeypatch.setenv("HOME", str(tmp_path))
     config_path = tmp_path / "config.json"
 
-    app = ImladrisApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
+    app = MandosApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
     async with app.run_test(size=(120, 40)) as pilot:
         await _open_add(app, pilot)
 
@@ -195,7 +195,7 @@ async def test_add_keyed_member_fetches_models_tests_connection_and_persists_tok
             return_value=Response(200, json={"choices": []})
         )
 
-        app = ImladrisApp(
+        app = MandosApp(
             config_path=config_path,
             home=tmp_path,
             harness_status=_harness_status(),
@@ -235,7 +235,7 @@ async def test_add_keyed_member_fetches_models_tests_connection_and_persists_tok
     assert saved["providers"][0]["context_window_source"] == "endpoint"
     assert saved["providers"][0]["api_key_env"] == "OPENAI_KEY"
     assert "new-secret" not in config_path.read_text(encoding="utf-8")
-    assert "OPENAI_KEY=new-secret" in (tmp_path / ".imladris/.env").read_text(encoding="utf-8")
+    assert "OPENAI_KEY=new-secret" in (tmp_path / ".mandos/.env").read_text(encoding="utf-8")
 
 
 @pytest.mark.asyncio
@@ -243,7 +243,7 @@ async def test_add_catalog_prefill_updates_kind_for_openrouter(tmp_path, monkeyp
     monkeypatch.setenv("HOME", str(tmp_path))
     config_path = tmp_path / "config.json"
 
-    app = ImladrisApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
+    app = MandosApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
     async with app.run_test(size=(120, 40)) as pilot:
         await _open_add(app, pilot)
         app.screen.query_one("#preset", Select).value = "openrouter"
@@ -259,7 +259,7 @@ async def test_manual_context_window_is_persisted_as_user_override(tmp_path, mon
     monkeypatch.setenv("HOME", str(tmp_path))
     config_path = tmp_path / "config.json"
 
-    app = ImladrisApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
+    app = MandosApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
     async with app.run_test(size=(120, 40)) as pilot:
         await _open_add(app, pilot)
         _field(app, "#member-id").value = "local"
@@ -286,11 +286,11 @@ async def test_edit_model_and_token_then_blank_token_preserves_existing_value(
     monkeypatch.delenv("OPENAI_KEY", raising=False)
     config_path = tmp_path / "config.json"
     _write_json(config_path, _config_data())
-    env_path = tmp_path / ".imladris/.env"
+    env_path = tmp_path / ".mandos/.env"
     env_path.parent.mkdir(parents=True)
     env_path.write_text("OPENAI_KEY=old-secret\n", encoding="utf-8")
 
-    app = ImladrisApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
+    app = MandosApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
     async with app.run_test(size=(120, 40)) as pilot:
         screen = await _open_edit(app, pilot)
         screen._set_model_choices(["new-model"], "new-model")
@@ -319,11 +319,11 @@ async def test_edit_api_key_env_blank_token_copies_old_value_and_prunes_old_key(
     monkeypatch.delenv("NEW_KEY", raising=False)
     config_path = tmp_path / "config.json"
     _write_json(config_path, _config_data(api_key_env="OLD_KEY"))
-    env_path = tmp_path / ".imladris/.env"
+    env_path = tmp_path / ".mandos/.env"
     env_path.parent.mkdir(parents=True)
     env_path.write_text("OLD_KEY=old-secret\n", encoding="utf-8")
 
-    app = ImladrisApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
+    app = MandosApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
     async with app.run_test(size=(120, 40)) as pilot:
         await _open_edit(app, pilot)
         _field(app, "#api-key-env").value = "NEW_KEY"
@@ -348,11 +348,11 @@ async def test_duplicate_id_and_empty_model_show_inline_errors_without_writing(
     config_path = tmp_path / "config.json"
     _write_json(config_path, _config_data())
     original = config_path.read_text(encoding="utf-8")
-    env_path = tmp_path / ".imladris/.env"
+    env_path = tmp_path / ".mandos/.env"
     env_path.parent.mkdir(parents=True)
     env_path.write_text("OPENAI_KEY=old-secret\n", encoding="utf-8")
 
-    app = ImladrisApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
+    app = MandosApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
     async with app.run_test(size=(120, 40)) as pilot:
         await _open_add(app, pilot)
         _field(app, "#member-id").value = "openai"
@@ -390,13 +390,13 @@ async def test_escape_mid_edit_discards_changes(tmp_path, monkeypatch):
     monkeypatch.delenv("OPENAI_KEY", raising=False)
     config_path = tmp_path / "config.json"
     _write_json(config_path, _config_data())
-    env_path = tmp_path / ".imladris/.env"
+    env_path = tmp_path / ".mandos/.env"
     env_path.parent.mkdir(parents=True)
     env_path.write_text("OPENAI_KEY=old-secret\n", encoding="utf-8")
     original_config = config_path.read_text(encoding="utf-8")
     original_env = env_path.read_text(encoding="utf-8")
 
-    app = ImladrisApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
+    app = MandosApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
     async with app.run_test(size=(120, 40)) as pilot:
         await _open_edit(app, pilot)
         _field(app, "#member-id").value = "changed"
@@ -417,7 +417,7 @@ async def test_probe_failure_falls_back_to_free_text_model_entry(tmp_path, monke
     with respx.mock(assert_all_called=False) as router:
         router.get("https://api.openai.com/v1/models").mock(return_value=Response(500))
 
-        app = ImladrisApp(
+        app = MandosApp(
             config_path=config_path,
             home=tmp_path,
             harness_status=_harness_status(),

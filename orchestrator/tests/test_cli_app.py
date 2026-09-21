@@ -6,12 +6,12 @@ from orchestrator import sessions
 from orchestrator.cli.app import detect_wired_harnesses, doctor_report, main
 from orchestrator.cli.harness import wire_claude_code
 from orchestrator.model_catalog import CacheStatus, CatalogRefreshResult, ModelMetadata
-from orchestrator.settings import Defaults, ImladrisConfig, ProviderDescriptor
+from orchestrator.settings import Defaults, MandosConfig, ProviderDescriptor
 
 
 def _config(monkeypatch):
     monkeypatch.setenv("K_KEY", "topsecret")
-    return ImladrisConfig(
+    return MandosConfig(
         providers=[
             ProviderDescriptor(
                 id="cloud",
@@ -52,7 +52,7 @@ def test_detect_wired_harnesses(tmp_path):
 
 def test_main_help_returns_zero(capsys):
     assert main(["--help"]) == 0
-    assert "imladris" in capsys.readouterr().out
+    assert "mandos" in capsys.readouterr().out
 
 
 def test_clear_sessions_command_clears_local_session_files(tmp_path, monkeypatch, capsys):

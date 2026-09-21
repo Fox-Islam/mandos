@@ -20,7 +20,7 @@ SEL_HARNESS_CLAUDE_CODE = "#harness-claude-code"
 
 
 class HarnessScreen(ArrowNavigationMixin, Screen[None]):
-    """Wire Imladris into supported MCP harnesses."""
+    """Wire Mandos into supported MCP harnesses."""
 
     BINDINGS = [*ARROW_NAV_BINDINGS, ("escape", "cancel", "Cancel")]
 

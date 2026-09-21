@@ -1,4 +1,4 @@
-"""Add/edit member form for the Imladris configurator."""
+"""Add/edit member form for the Mandos configurator."""
 
 from __future__ import annotations
 

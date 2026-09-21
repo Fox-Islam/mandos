@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 set -eu
 
-SOURCE="${IMLADRIS_SOURCE:-${IMLADRIS_REPO:-https://github.com/FeanorsCodeSL/imladris}}"
+SOURCE="${MANDOS_SOURCE:-${MANDOS_REPO:-https://github.com/Fox-Islam/mandos}}"
 
 resolve_uv_package_spec() {
   case "$1" in
@@ -52,42 +52,42 @@ if [ -z "${PYTHON_CMD}" ]; then
   PYTHON_CMD="$(uv python find 3.13)"
 fi
 
-echo "Installing imladris from ${PACKAGE_SPEC} ..."
-echo "Refreshing any previous imladris tool environment..."
-uv tool uninstall imladris >/dev/null 2>&1 || true
-uv cache clean imladris >/dev/null 2>&1 || true
+echo "Installing mandos from ${PACKAGE_SPEC} ..."
+echo "Refreshing any previous mandos tool environment..."
+uv tool uninstall mandos >/dev/null 2>&1 || true
+uv cache clean mandos >/dev/null 2>&1 || true
 uv tool install --force --reinstall --refresh --python "${PYTHON_CMD}" "${PACKAGE_SPEC}"
 uv tool update-shell >/dev/null 2>&1 || true
 
-if command -v imladris >/dev/null 2>&1; then
-  IMLADRIS_BIN="$(command -v imladris)"
+if command -v mandos >/dev/null 2>&1; then
+  MANDOS_BIN="$(command -v mandos)"
 else
-  IMLADRIS_BIN="${TOOL_BIN}/imladris"
+  MANDOS_BIN="${TOOL_BIN}/mandos"
 fi
 
-if [ ! -x "${IMLADRIS_BIN}" ]; then
-  echo "Installed imladris executable was not found at ${IMLADRIS_BIN}." >&2
+if [ ! -x "${MANDOS_BIN}" ]; then
+  echo "Installed mandos executable was not found at ${MANDOS_BIN}." >&2
   exit 1
 fi
 
-if ! "${IMLADRIS_BIN}" --help >/dev/null 2>&1; then
+if ! "${MANDOS_BIN}" --help >/dev/null 2>&1; then
   TOOL_DIR="$(uv tool dir 2>/dev/null || true)"
-  echo "Installed imladris did not launch." >&2
+  echo "Installed mandos did not launch." >&2
   if [ -n "${TOOL_DIR}" ]; then
-    echo "Inspect ${TOOL_DIR}/imladris/pyvenv.cfg for the Python home used by uv." >&2
+    echo "Inspect ${TOOL_DIR}/mandos/pyvenv.cfg for the Python home used by uv." >&2
   fi
   exit 1
 fi
 
 echo ""
 echo "Installed two commands:"
-echo "  imladris      - the configurator TUI (run this next)"
-echo "  imladris-mcp  - the stdio MCP server your harnesses spawn"
+echo "  mandos      - the configurator TUI (run this next)"
+echo "  mandos-mcp  - the stdio MCP server your harnesses spawn"
 echo ""
-if command -v imladris >/dev/null 2>&1; then
-  echo "Next: run 'imladris' to assemble your council."
+if command -v mandos >/dev/null 2>&1; then
+  echo "Next: run 'mandos' to assemble your council."
 else
-  echo "Next: open a new terminal, then run 'imladris' to assemble your council."
+  echo "Next: open a new terminal, then run 'mandos' to assemble your council."
   if [ -n "${TOOL_BIN}" ]; then
     echo "If needed, add this directory to PATH: ${TOOL_BIN}"
   fi

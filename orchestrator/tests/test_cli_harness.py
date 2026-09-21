@@ -18,8 +18,8 @@ def test_wire_claude_code_global(tmp_path):
     path = wire_claude_code(tmp_path, "global")
     assert path == tmp_path / ".claude.json"
     data = json.loads(path.read_text(encoding="utf-8"))
-    assert data["mcpServers"]["imladris"]["command"] == "imladris-mcp"
-    assert data["mcpServers"]["imladris"]["env"]["IMLADRIS_CONFIG"] == "~/.imladris/config.json"
+    assert data["mcpServers"]["mandos"]["command"] == "mandos-mcp"
+    assert data["mcpServers"]["mandos"]["env"]["MANDOS_CONFIG"] == "~/.mandos/config.json"
 
 
 def test_wire_claude_code_preserves_other_servers_and_backs_up(tmp_path):
@@ -31,7 +31,7 @@ def test_wire_claude_code_preserves_other_servers_and_backs_up(tmp_path):
     data = json.loads(path.read_text(encoding="utf-8"))
     assert data["mcpServers"]["other"]["command"] == "x"
     assert data["numWindows"] == 3
-    assert "imladris" in data["mcpServers"]
+    assert "mandos" in data["mcpServers"]
     assert (tmp_path / ".claude.json.bak").exists()
 
 
@@ -45,14 +45,14 @@ def test_wire_claude_code_is_idempotent(tmp_path):
 def test_wire_claude_code_workspace(tmp_path):
     path = wire_claude_code(tmp_path, "workspace")
     assert path == tmp_path / ".mcp.json"
-    assert "imladris" in json.loads(path.read_text(encoding="utf-8"))["mcpServers"]
+    assert "mandos" in json.loads(path.read_text(encoding="utf-8"))["mcpServers"]
 
 
 def test_wire_codex_creates_table(tmp_path):
     path = wire_codex(tmp_path)
     data = tomllib.loads(path.read_text(encoding="utf-8"))
-    assert data["mcp_servers"]["imladris"]["command"] == "imladris-mcp"
-    assert data["mcp_servers"]["imladris"]["env"]["IMLADRIS_CONFIG"] == "~/.imladris/config.json"
+    assert data["mcp_servers"]["mandos"]["command"] == "mandos-mcp"
+    assert data["mcp_servers"]["mandos"]["env"]["MANDOS_CONFIG"] == "~/.mandos/config.json"
 
 
 def test_wire_codex_preserves_existing_and_is_idempotent(tmp_path):
@@ -65,7 +65,7 @@ def test_wire_codex_preserves_existing_and_is_idempotent(tmp_path):
     data = tomllib.loads(path.read_text(encoding="utf-8"))
     assert data["model"] == "gpt-5"
     assert data["mcp_servers"]["other"]["command"] == "other-mcp"
-    assert data["mcp_servers"]["imladris"]["command"] == "imladris-mcp"
+    assert data["mcp_servers"]["mandos"]["command"] == "mandos-mcp"
     after_first = path.read_text(encoding="utf-8")
     wire_codex(tmp_path)
     assert path.read_text(encoding="utf-8") == after_first
@@ -103,7 +103,7 @@ def test_set_codex_tool_output_token_limit_updates_existing_value(tmp_path):
 def test_wire_opencode(tmp_path):
     path = wire_opencode(tmp_path)
     assert path == tmp_path / ".config" / "opencode" / "opencode.json"
-    entry = json.loads(path.read_text(encoding="utf-8"))["mcp"]["imladris"]
+    entry = json.loads(path.read_text(encoding="utf-8"))["mcp"]["mandos"]
     assert entry["type"] == "local"
-    assert entry["command"] == ["imladris-mcp"]
-    assert entry["environment"]["IMLADRIS_CONFIG"] == "~/.imladris/config.json"
+    assert entry["command"] == ["mandos-mcp"]
+    assert entry["environment"]["MANDOS_CONFIG"] == "~/.mandos/config.json"

@@ -8,7 +8,7 @@ from textual.containers import Horizontal
 from textual.widgets import DataTable, OptionList, Static
 
 from orchestrator.cli.app import main
-from orchestrator.cli.tui import ImladrisApp
+from orchestrator.cli.tui import MandosApp
 from orchestrator.cli.tui.screens.dashboard import DashboardScreen
 from orchestrator.cli.tui.screens.member_form import MemberFormScreen
 from orchestrator.model_catalog import CacheStatus, CatalogRefreshResult, ModelMetadata
@@ -23,11 +23,11 @@ def _harness_status(ok: bool = True) -> dict[str, bool]:
     return {"claude-code": ok, "codex": ok, "opencode": ok}
 
 
-def _dashboard_text(app: ImladrisApp, selector: str) -> str:
+def _dashboard_text(app: MandosApp, selector: str) -> str:
     return str(app.screen.query_one(selector, Static).content)
 
 
-def _roster_text(app: ImladrisApp) -> str:
+def _roster_text(app: MandosApp) -> str:
     table = app.screen.query_one("#roster", DataTable)
     rows = [
         " ".join(str(cell) for cell in table.get_row_at(index)) for index in range(table.row_count)
@@ -35,11 +35,11 @@ def _roster_text(app: ImladrisApp) -> str:
     return "\n".join(rows)
 
 
-def _action_menu(app: ImladrisApp) -> OptionList:
+def _action_menu(app: MandosApp) -> OptionList:
     return app.screen.query_one("#action-menu", OptionList)
 
 
-def _action_labels(app: ImladrisApp) -> list[str]:
+def _action_labels(app: MandosApp) -> list[str]:
     menu = _action_menu(app)
     return [str(menu.get_option_at_index(index).prompt) for index in range(menu.option_count)]
 
@@ -79,13 +79,13 @@ def _config_data(*, model: str = "gpt-4o", api_key_env: str = "OPENAI_KEY") -> d
 async def test_dashboard_renders_roster_roles_and_config_path(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.delenv("OPENAI_KEY", raising=False)
-    env = tmp_path / ".imladris/.env"
+    env = tmp_path / ".mandos/.env"
     env.parent.mkdir(parents=True)
     env.write_text("OPENAI_KEY=secret\n", encoding="utf-8")
     config_path = tmp_path / "config.json"
     _write_json(config_path, _config_data())
 
-    app = ImladrisApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
+    app = MandosApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
     async with app.run_test(size=(120, 36)) as pilot:
         await pilot.pause()
         roster = _roster_text(app)
@@ -98,7 +98,9 @@ async def test_dashboard_renders_roster_roles_and_config_path(tmp_path, monkeypa
         assert "panel | judge" in roster
         assert "panel" in roster
         assert "~/config.json" in _dashboard_text(app, "#paths")
-        assert "Judge = openai (gpt-4o)" in _dashboard_text(app, "#roles")
+        # The Jev judge is what decides; the chat analyst is named as its support.
+        assert "Judge = jev-latest via typesafe, key missing" in _dashboard_text(app, "#roles")
+        assert "analyst openai (gpt-4o)" in _dashboard_text(app, "#roles")
         assert "Budget = green" in _dashboard_text(app, "#roles")
         assert "Curator" not in _dashboard_text(app, "#roles")
 
@@ -108,7 +110,7 @@ async def test_dashboard_empty_config_renders_issues_and_add_affordance(tmp_path
     monkeypatch.setenv("HOME", str(tmp_path))
     config_path = tmp_path / "missing.json"
 
-    app = ImladrisApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
+    app = MandosApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
     async with app.run_test(size=(80, 24)) as pilot:
         await pilot.pause()
         issues = _dashboard_text(app, "#issues")
@@ -118,6 +120,7 @@ async def test_dashboard_empty_config_renders_issues_and_add_affordance(tmp_path
         assert _action_labels(app) == [
             "Add member",
             "Wire harnesses",
+            "Edit judge",
             "Run defaults",
             "Refresh model catalog",
             "Quit",
@@ -130,13 +133,13 @@ async def test_empty_dashboard_arrow_menu_opens_add_member(tmp_path, monkeypatch
     monkeypatch.setenv("HOME", str(tmp_path))
     config_path = tmp_path / "missing.json"
 
-    app = ImladrisApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
+    app = MandosApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
     async with app.run_test(size=(80, 24)) as pilot:
         await pilot.pause()
         menu = _action_menu(app)
 
         assert menu.has_focus
-        assert menu.option_count == 5
+        assert menu.option_count == 6
         assert menu.highlighted == 0
 
         await pilot.press("down")
@@ -155,7 +158,7 @@ async def test_dashboard_has_no_letter_shortcut_actions_or_footer(tmp_path, monk
     monkeypatch.setenv("HOME", str(tmp_path))
     config_path = tmp_path / "missing.json"
 
-    app = ImladrisApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
+    app = MandosApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
     async with app.run_test(size=(80, 24)) as pilot:
         await pilot.pause()
 
@@ -172,7 +175,7 @@ async def test_dashboard_with_members_arrow_keys_move_roster_cursor(tmp_path, mo
     config_path = tmp_path / "config.json"
     _write_json(config_path, _config_data())
 
-    app = ImladrisApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
+    app = MandosApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
     async with app.run_test(size=(120, 36)) as pilot:
         await pilot.pause()
         table = app.screen.query_one("#roster", DataTable)
@@ -195,7 +198,7 @@ async def test_dashboard_is_active_screen_with_nonzero_region(tmp_path, monkeypa
     monkeypatch.setenv("HOME", str(tmp_path))
     config_path = tmp_path / "missing.json"
 
-    app = ImladrisApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
+    app = MandosApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
     async with app.run_test(size=(80, 24)) as pilot:
         await pilot.pause()
 
@@ -217,7 +220,7 @@ async def test_dashboard_text_round_trips_through_utf8(tmp_path, monkeypatch):
         ),
     )
 
-    app = ImladrisApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
+    app = MandosApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
     async with app.run_test(size=(120, 36)) as pilot:
         await pilot.pause()
 
@@ -241,7 +244,7 @@ async def test_dashboard_missing_token_issue(tmp_path, monkeypatch):
     config_path = tmp_path / "config.json"
     _write_json(config_path, _config_data())
 
-    app = ImladrisApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
+    app = MandosApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
     async with app.run_test(size=(120, 36)) as pilot:
         await pilot.pause()
 
@@ -290,7 +293,7 @@ async def test_dashboard_budget_gauge_renders_green_amber_and_red(tmp_path, monk
         },
     )
 
-    app = ImladrisApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
+    app = MandosApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
     async with app.run_test(size=(120, 36)) as pilot:
         await pilot.pause()
         roster = _roster_text(app)
@@ -311,7 +314,7 @@ async def test_dashboard_refresh_catalog_action_reports_status(tmp_path, monkeyp
             refreshed=True,
             models=[ModelMetadata("openai", "gpt-4o", context_window=128000)],
             status=CacheStatus(
-                path=str(tmp_path / ".imladris/model-catalog-cache.json"),
+                path=str(tmp_path / ".mandos/model-catalog-cache.json"),
                 exists=True,
                 updated_at=1,
                 age_seconds=0,
@@ -324,10 +327,10 @@ async def test_dashboard_refresh_catalog_action_reports_status(tmp_path, monkeyp
         fake_refresh,
     )
 
-    app = ImladrisApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
+    app = MandosApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
     async with app.run_test(size=(80, 24)) as pilot:
         await pilot.pause()
-        await pilot.press("down", "down", "down", "enter")
+        await pilot.press("down", "down", "down", "down", "enter")
         await _wait_for(
             pilot,
             lambda: "Catalog  refreshed 1 models" in _dashboard_text(app, "#harness"),
@@ -336,25 +339,25 @@ async def test_dashboard_refresh_catalog_action_reports_status(tmp_path, monkeyp
 
 
 @pytest.mark.asyncio
-async def test_dashboard_respects_imladris_config_and_default_missing_path(tmp_path, monkeypatch):
+async def test_dashboard_respects_mandos_config_and_default_missing_path(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("OPENAI_KEY", "secret")
     config_path = tmp_path / "chosen.json"
     _write_json(config_path, _config_data())
-    monkeypatch.setenv("IMLADRIS_CONFIG", str(config_path))
+    monkeypatch.setenv("MANDOS_CONFIG", str(config_path))
 
-    app = ImladrisApp(home=tmp_path, harness_status=_harness_status())
+    app = MandosApp(home=tmp_path, harness_status=_harness_status())
     async with app.run_test(size=(120, 36)) as pilot:
         await pilot.pause()
 
         assert "~/chosen.json" in _dashboard_text(app, "#paths")
 
-    monkeypatch.delenv("IMLADRIS_CONFIG", raising=False)
-    missing_app = ImladrisApp(home=tmp_path, harness_status=_harness_status())
+    monkeypatch.delenv("MANDOS_CONFIG", raising=False)
+    missing_app = MandosApp(home=tmp_path, harness_status=_harness_status())
     async with missing_app.run_test(size=(80, 24)) as pilot:
         await pilot.pause()
 
-        assert "~/.imladris/config.json" in _dashboard_text(missing_app, "#paths")
+        assert "~/.mandos/config.json" in _dashboard_text(missing_app, "#paths")
 
 
 @pytest.mark.asyncio
@@ -373,7 +376,7 @@ async def test_dashboard_malformed_provider_row_keeps_running_and_disables_write
         },
     )
 
-    app = ImladrisApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
+    app = MandosApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
     async with app.run_test(size=(80, 24)) as pilot:
         await pilot.pause()
 
@@ -388,7 +391,7 @@ async def test_dashboard_malformed_json_surfaces_manual_repair_issue(tmp_path, m
     config_path = tmp_path / "config.json"
     config_path.write_text("{bad json\n", encoding="utf-8")
 
-    app = ImladrisApp(config_path=config_path, home=tmp_path, harness_status=_harness_status(False))
+    app = MandosApp(config_path=config_path, home=tmp_path, harness_status=_harness_status(False))
     async with app.run_test(size=(80, 24)) as pilot:
         await pilot.pause()
         issues = _dashboard_text(app, "#issues")
@@ -406,7 +409,7 @@ async def test_dashboard_branding_and_responsive_layout(tmp_path, monkeypatch):
     long_model = "provider-family/extremely-long-model-name-that-should-truncate"
     _write_json(config_path, _config_data(model=long_model, api_key_env="LONG_KEY"))
 
-    small = ImladrisApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
+    small = MandosApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
     async with small.run_test(size=(80, 24)) as pilot:
         await pilot.pause()
         small_header = _dashboard_text(small, "#brand")
@@ -424,7 +427,7 @@ async def test_dashboard_branding_and_responsive_layout(tmp_path, monkeypatch):
         assert "..." in small_roster
         assert "Quit" in _action_labels(small)
 
-    roomy = ImladrisApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
+    roomy = MandosApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
     async with roomy.run_test(size=(120, 36)) as pilot:
         await pilot.pause()
         roomy_header = _dashboard_text(roomy, "#brand")
@@ -436,17 +439,17 @@ async def test_dashboard_branding_and_responsive_layout(tmp_path, monkeypatch):
         assert "╔" + "═" * 24 + "╗" in roomy_header
         assert "╔" + "═" * 18 + "╗" in roomy_header
         assert len(roomy_header.splitlines()) == 11
-        assert "imladris" in outer_title
+        assert "mandos" in outer_title
         assert "Wire harnesses" in _action_labels(roomy)
 
 
 @pytest.mark.asyncio
 async def test_dashboard_quit_action_exits_cleanly(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
-    app = ImladrisApp(config_path=tmp_path / "missing.json", home=tmp_path)
+    app = MandosApp(config_path=tmp_path / "missing.json", home=tmp_path)
 
     async with app.run_test(size=(80, 24)) as pilot:
-        await pilot.press("down", "down", "down", "down", "enter")
+        await pilot.press("down", "down", "down", "down", "down", "enter")
 
     assert app.return_value == 0
 
@@ -459,7 +462,7 @@ def test_main_help_and_doctor_paths_remain_textual_free(tmp_path, monkeypatch, c
     monkeypatch.setenv("OPENAI_KEY", "secret")
     config_path = tmp_path / "config.json"
     _write_json(config_path, _config_data())
-    monkeypatch.setenv("IMLADRIS_CONFIG", str(config_path))
+    monkeypatch.setenv("MANDOS_CONFIG", str(config_path))
 
     assert main(["doctor"]) == 0
-    assert "Imladris configuration" in capsys.readouterr().out
+    assert "Mandos configuration" in capsys.readouterr().out

@@ -1,1 +1,1 @@
-"""Bundled data files for Imladris."""
+"""Bundled data files for Mandos."""

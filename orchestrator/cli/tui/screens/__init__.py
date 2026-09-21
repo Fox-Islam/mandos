@@ -1,1 +1,1 @@
-"""Textual screens for the Imladris configurator."""
+"""Textual screens for the Mandos configurator."""

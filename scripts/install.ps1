@@ -30,12 +30,12 @@ function Resolve-UvPackageSpec {
 
 $sourceValue = if ($Source) {
     $Source
-} elseif ($env:IMLADRIS_SOURCE) {
-    $env:IMLADRIS_SOURCE
-} elseif ($env:IMLADRIS_REPO) {
-    $env:IMLADRIS_REPO
+} elseif ($env:MANDOS_SOURCE) {
+    $env:MANDOS_SOURCE
+} elseif ($env:MANDOS_REPO) {
+    $env:MANDOS_REPO
 } else {
-    'https://github.com/FeanorsCodeSL/imladris'
+    'https://github.com/Fox-Islam/mandos'
 }
 
 $packageSpec = Resolve-UvPackageSpec -Value $sourceValue
@@ -65,17 +65,17 @@ if (-not $pythonCmd) {
     $pythonCmd = (& uv python find 3.13).Trim()
 }
 
-Write-Output "Installing imladris from $packageSpec ..."
-Write-Output 'Refreshing any previous imladris tool environment...'
+Write-Output "Installing mandos from $packageSpec ..."
+Write-Output 'Refreshing any previous mandos tool environment...'
 try {
-    & uv tool uninstall imladris *> $null
+    & uv tool uninstall mandos *> $null
 } catch {
-    Write-Verbose "No previous imladris tool environment to remove: $($_.Exception.Message)"
+    Write-Verbose "No previous mandos tool environment to remove: $($_.Exception.Message)"
 }
 try {
-    & uv cache clean imladris *> $null
+    & uv cache clean mandos *> $null
 } catch {
-    Write-Verbose "Could not clean imladris cache entry: $($_.Exception.Message)"
+    Write-Verbose "Could not clean mandos cache entry: $($_.Exception.Message)"
 }
 uv tool install --force --reinstall --refresh --python "$pythonCmd" "$packageSpec"
 try {
@@ -84,34 +84,34 @@ try {
     Write-Verbose "Could not update shell PATH automatically: $($_.Exception.Message)"
 }
 
-$imladrisCommand = Get-Command imladris -ErrorAction SilentlyContinue
-$imladrisPath = if ($imladrisCommand) {
-    $imladrisCommand.Source
+$mandosCommand = Get-Command mandos -ErrorAction SilentlyContinue
+$mandosPath = if ($mandosCommand) {
+    $mandosCommand.Source
 } else {
-    Join-Path $toolBin 'imladris.exe'
+    Join-Path $toolBin 'mandos.exe'
 }
 
-if (-not (Test-Path -LiteralPath $imladrisPath)) {
-    throw "Installed imladris executable was not found at $imladrisPath."
+if (-not (Test-Path -LiteralPath $mandosPath)) {
+    throw "Installed mandos executable was not found at $mandosPath."
 }
 
-& $imladrisPath --help *> $null
+& $mandosPath --help *> $null
 if ($LASTEXITCODE -ne 0) {
     $toolDir = (& uv tool dir).Trim()
-    $pyvenv = Join-Path $toolDir 'imladris\pyvenv.cfg'
-    Write-Error "Installed imladris did not launch. Inspect $pyvenv for the Python home used by uv."
+    $pyvenv = Join-Path $toolDir 'mandos\pyvenv.cfg'
+    Write-Error "Installed mandos did not launch. Inspect $pyvenv for the Python home used by uv."
     exit $LASTEXITCODE
 }
 
 Write-Output ''
 Write-Output 'Installed two commands:'
-Write-Output '  imladris      - the configurator TUI (run this next)'
-Write-Output '  imladris-mcp  - the stdio MCP server your harnesses spawn'
+Write-Output '  mandos      - the configurator TUI (run this next)'
+Write-Output '  mandos-mcp  - the stdio MCP server your harnesses spawn'
 Write-Output ''
-if (Get-Command imladris -ErrorAction SilentlyContinue) {
-    Write-Output "Next: run 'imladris' to assemble your council."
+if (Get-Command mandos -ErrorAction SilentlyContinue) {
+    Write-Output "Next: run 'mandos' to assemble your council."
 } else {
-    Write-Output "Next: open a new terminal, then run 'imladris' to assemble your council."
+    Write-Output "Next: open a new terminal, then run 'mandos' to assemble your council."
     if ($toolBin) {
         Write-Output "If needed, add this directory to PATH: $toolBin"
     }

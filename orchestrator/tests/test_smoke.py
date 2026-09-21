@@ -21,4 +21,4 @@ def test_package_imports():
 async def test_mcp_tool_surface():
     async with Client(mcp) as client:
         names = {tool.name for tool in await client.list_tools()}
-    assert {"imladris", "imladris_status"} <= names
+    assert {"mandos", "mandos_status"} <= names

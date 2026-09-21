@@ -8,7 +8,8 @@ import httpx
 
 from orchestrator.budget import BudgetEstimate, classify_budget, estimate_provider_budget
 from orchestrator.costing import CostInput, estimate_cost
-from orchestrator.judge import JudgeOutcome, build_judge_user, run_deliberation_judge
+from orchestrator.jev import build_jev_client
+from orchestrator.judge import JudgeOutcome, build_judge_user, run_judge
 from orchestrator.model_catalog import metadata_from_provider_override, resolve_model_metadata
 from orchestrator.models import (
     ChatRequest,
@@ -34,7 +35,7 @@ SYSTEM = "Answer independently and thoroughly. Do not refer to other panelists."
 
 CONTRACT_VERSION = "1"
 
-log = get_logger("imladris.panel")
+log = get_logger("mandos.panel")
 
 _FAILURE_PRIORITY = ("insufficient_credits", "rate_limited", "all_panels_failed")
 _HTTP_CODE_RE = re.compile(r"\bHTTP (\d{3})\b")
@@ -86,6 +87,7 @@ def failure_response(
     error: str,
     depth: int = 0,
     thread_id: str | None = None,
+    judge_shape: str | None = None,
 ) -> DeliberationResponse:
     """Build a contract-stable failure envelope.
 
@@ -107,13 +109,19 @@ def failure_response(
             "failed": 0,
             "preset": None,
             "analysis_model": None,
+            "judge_shape": judge_shape,
+            "judge_provider": None,
+            "judge_model": None,
+            "judge_fallback_from": None,
+            "jev_calls": 0,
+            "jev_questions": 0,
             "budget": [],
             "compacted": False,
             "compacted_providers": [],
             "failure": failure,
             "error": error,
             "cost_estimate_usd": basis["usd"],
-            "cost_basis": {k: v for k, v in basis.items() if k != "usd"},
+            "cost_basis": {**{k: v for k, v in basis.items() if k != "usd"}, "jev_usd": None},
         },
     )
     resp.text = _render(resp)
@@ -204,37 +212,110 @@ def _budget_meta(
     return budgets
 
 
-def _render_contradictions(contradictions) -> list[str]:
+def _claim_index(analysis) -> dict[tuple[str, int], object]:
+    """Findings keyed by the narrative slot they belong to, so the renderer can put
+    each number next to the sentence it is about."""
+    if analysis.calibration is None:
+        return {}
+    return {(c.role, c.index): c for c in analysis.calibration.claims}
+
+
+def _numbers(claim) -> str:
+    """The calibrated readings for one finding, rendered inline.
+
+    This is the part the authoring model is meant to act on: "consensus" with a
+    support floor of 0.51 is a very different instruction from the same sentence at
+    0.94, and a generative judge cannot tell you which one you have.
+    """
+    if claim is None:
+        return ""
+    bits = []
+    if claim.holds is not None:
+        bits.append(f"holds {claim.holds:.2f}")
+    if claim.support:
+        low = min(s.support for s in claim.support)
+        high = max(s.support for s in claim.support)
+        bits.append(f"support {low:.2f}-{high:.2f}")
+    if claim.contested is not None:
+        bits.append(f"contested {claim.contested:.2f}")
+    if claim.standing is not None:
+        bits.append(f"standing {claim.standing:.2f}/2")
+    return f" _({'; '.join(bits)})_" if bits else ""
+
+
+def _render_contradictions(contradictions, index) -> list[str]:
     lines = ["\n**Contradictions**"]
-    for c in contradictions:
-        lines.append(f"- *{c.topic}*")
+    for i, c in enumerate(contradictions):
+        lines.append(f"- *{c.topic}*{_numbers(index.get(('contradiction', i)))}")
         lines.extend(f"  - [{', '.join(p.ids)}] {p.claim}" for p in c.positions)
     return lines
 
 
+def _render_matrix(cal) -> list[str]:
+    """The matrix shape has no prose to attach numbers to, so it renders as tables."""
+    lines: list[str] = []
+    if cal.agreement:
+        lines.append("\n**Pairwise agreement**")
+        lines.extend(
+            f"- {pair.ids[0]} vs {pair.ids[1]}: {pair.agreement:.2f}"
+            for pair in sorted(cal.agreement, key=lambda p: p.agreement)
+        )
+    if cal.per_answer:
+        lines.append("\n**Per answer** (hedging and scope are rubric levels out of 2)")
+        for profile in cal.per_answer:
+            readings = []
+            if profile.scope is not None:
+                readings.append(f"scope {profile.scope:.2f}")
+            if profile.hedging is not None:
+                readings.append(f"hedging {profile.hedging:.2f}")
+            if profile.distinctive is not None:
+                readings.append(f"distinctive {profile.distinctive:.2f}")
+            lines.append(f"- **{profile.id}**: {', '.join(readings) or 'no readings'}")
+    if cal.outlier and cal.outlier.id:
+        confidence = (
+            f" at {cal.outlier.confidence:.2f}" if cal.outlier.confidence is not None else ""
+        )
+        lines.append(f"\n**Least like the others:** {cal.outlier.id}{confidence}")
+    return lines
+
+
 def _render_analysis(an) -> list[str]:
-    lines = ["\n## Analysis"]
+    shape = an.calibration.shape if an.calibration else "llm"
+    lines = [f"\n## Analysis\n\n*Judge: {shape}.*"]
+    index = _claim_index(an)
     if an.consensus:
         lines.append("\n**Consensus**")
-        lines.extend(f"- {c}" for c in an.consensus)
+        lines.extend(
+            f"- {c}{_numbers(index.get(('consensus', i)))}" for i, c in enumerate(an.consensus)
+        )
     if an.contradictions:
-        lines.extend(_render_contradictions(an.contradictions))
+        lines.extend(_render_contradictions(an.contradictions, index))
     if an.partial_coverage:
         lines.append("\n**Partial coverage**")
-        lines.extend(f"- [{', '.join(pc.ids)}] {pc.point}" for pc in an.partial_coverage)
+        lines.extend(
+            f"- [{', '.join(pc.ids)}] {pc.point}{_numbers(index.get(('partial_coverage', i)))}"
+            for i, pc in enumerate(an.partial_coverage)
+        )
     if an.unique_insights:
         lines.append("\n**Unique insights**")
-        lines.extend(f"- [{u.id}] {u.insight}" for u in an.unique_insights)
+        lines.extend(
+            f"- [{u.id}] {u.insight}{_numbers(index.get(('unique_insight', i)))}"
+            for i, u in enumerate(an.unique_insights)
+        )
     if an.blind_spots:
         lines.append("\n**Blind spots**")
-        lines.extend(f"- {b}" for b in an.blind_spots)
+        lines.extend(
+            f"- {b}{_numbers(index.get(('blind_spot', i)))}" for i, b in enumerate(an.blind_spots)
+        )
+    if an.calibration:
+        lines.extend(_render_matrix(an.calibration))
     if an.confidence_notes:
         lines.append(f"\n**Confidence:** {an.confidence_notes}")
     return lines
 
 
 def _render(resp: DeliberationResponse) -> str:
-    lines = [f"# Imladris deliberation\n\n**Question:** {resp.question}\n"]
+    lines = [f"# Mandos deliberation\n\n**Question:** {resp.question}\n"]
     lines.append("## Panel")
     for a in resp.panel:
         suffix = f" — {a.error}" if a.error else ""
@@ -284,6 +365,20 @@ def _sent_input_text(chat_request: ChatRequest, fallback: str) -> str:
     if chat_request.messages is not None:
         return "\n".join(message.content for message in chat_request.messages)
     return fallback
+
+
+def _apply_jev_cost(meta: dict, outcome: JudgeOutcome) -> None:
+    """Fold Jev's own reported charge into the advisory total.
+
+    Only OpenRouter prices a decision call; TypeSafe does not report one. ``None`` and
+    ``0.0`` are different answers, so an unpriced judge leaves ``jev_usd`` null rather
+    than claiming the judging was free.
+    """
+    meta["cost_basis"]["jev_usd"] = (
+        round(outcome.jev_cost, 6) if outcome.jev_cost is not None else None
+    )
+    if outcome.jev_cost is not None:
+        meta["cost_estimate_usd"] = round(meta["cost_estimate_usd"] + outcome.jev_cost, 6)
 
 
 def _apply_cost(meta: dict, calls: list[CostInput], pricing) -> None:
@@ -423,6 +518,7 @@ async def _run_deliberation(
     log.info(
         "deliberation.start",
         panel=panel_ids,
+        judge_shape=config.judge.shape,
         analysis_model=analysis_id,
         preset=request.preset or config.defaults.preset,
         depth=request.depth,
@@ -474,6 +570,9 @@ async def _run_deliberation(
             "failed": len(panel) - len(ok_results),
             "preset": request.preset or config.defaults.preset,
             "analysis_model": analysis_id,
+            "judge_shape": config.judge.shape,
+            "judge_provider": config.judge.provider if config.judge.uses_jev else None,
+            "judge_model": config.judge.model if config.judge.uses_jev else None,
             "budget": _budget_meta(
                 request,
                 config,
@@ -489,9 +588,14 @@ async def _run_deliberation(
         }
 
         if not ok_results:
+            meta["judge_fallback_from"] = None
+            meta["jev_calls"] = 0
+            meta["jev_questions"] = 0
             meta["failure"] = _classify_failure([r.error or "" for r in results])
             meta["error"] = "all panel providers failed"
             _apply_cost(meta, [CostInput(r.provider_id, r.usage) for r in results], config.pricing)
+            # No judge ran, so nothing was spent on one — but the key must be present.
+            meta["cost_basis"]["jev_usd"] = None
             resp = DeliberationResponse(
                 question=request.prompt,
                 thread_id=request.thread_id,
@@ -511,22 +615,36 @@ async def _run_deliberation(
         analysis_provider, judge_role_error = _resolve_analysis_provider(
             analysis_id, provider_desc, client
         )
-        if judge_role_error:
-            outcome = JudgeOutcome(analysis_error=judge_role_error)
-        else:
-            outcome = await run_deliberation_judge(
-                request.prompt,
-                raw,
-                analysis_provider,
-                deadline=deadline,
-                max_tokens=request.max_tokens or config.defaults.max_tokens,
+        outcome = await run_judge(
+            request.prompt,
+            raw,
+            shape=config.judge.shape,
+            deadline=deadline,
+            context=request.context,
+            jev_client=build_jev_client(config.judge, client),
+            analysis_provider=analysis_provider,
+            max_tokens=(
+                request.max_tokens
+                or config.defaults.analysis_max_tokens
+                or config.defaults.max_tokens
+            ),
+            batch_size=config.judge.questions_per_call,
+        )
+        meta["judge_shape"] = outcome.shape
+        meta["judge_fallback_from"] = outcome.fallback_from
+        meta["jev_calls"] = outcome.jev_calls
+        meta["jev_questions"] = outcome.jev_questions
+
+        if outcome.analysis_error or judge_role_error:
+            # A misconfigured analyst is part of why the judge came up short, so it
+            # belongs in the same field rather than a second one the host must know to
+            # look for.
+            meta["judge_error"] = "; ".join(
+                part for part in (judge_role_error, outcome.analysis_error) if part
             )
 
-        if outcome.analysis_error:
-            meta["judge_error"] = outcome.analysis_error
-
         panel_input = _compose_user(request.prompt, request.context)
-        judge_input = build_judge_user(request.prompt, raw)
+        judge_input = build_judge_user(request.prompt, raw, request.context)
         cost_calls = [
             CostInput(
                 r.provider_id,
@@ -540,10 +658,15 @@ async def _run_deliberation(
             for pid, usage in outcome.usages
         ]
         _apply_cost(meta, cost_calls, config.pricing)
+        _apply_jev_cost(meta, outcome)
 
         log.info(
             "judge.result",
+            shape=outcome.shape,
+            fallback_from=outcome.fallback_from,
             analysis=outcome.analysis is not None,
+            jev_calls=outcome.jev_calls,
+            jev_questions=outcome.jev_questions,
             judge_error=outcome.analysis_error,
         )
 

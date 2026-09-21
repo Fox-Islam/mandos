@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from textual.widgets import Input, Select, Static
 
-from orchestrator.cli.tui import ImladrisApp
+from orchestrator.cli.tui import MandosApp
 from orchestrator.cli.tui.screens.defaults import DefaultsScreen
 
 
@@ -61,7 +61,7 @@ async def test_run_defaults_screen_persists_execution_defaults(tmp_path, monkeyp
     monkeypatch.setenv("HOME", str(tmp_path))
     config_path = tmp_path / "config.json"
     _write_json(config_path, _config_data())
-    app = ImladrisApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
+    app = MandosApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
 
     async with app.run_test(size=(120, 40)) as pilot:
         await pilot.pause()
@@ -90,7 +90,7 @@ async def test_run_defaults_screen_rejects_invalid_values(tmp_path, monkeypatch)
     monkeypatch.setenv("HOME", str(tmp_path))
     config_path = tmp_path / "config.json"
     _write_json(config_path, _config_data())
-    app = ImladrisApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
+    app = MandosApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
 
     async with app.run_test(size=(120, 40)) as pilot:
         await pilot.pause()

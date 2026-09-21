@@ -15,7 +15,7 @@ from orchestrator.budget import estimate_text_tokens
 from orchestrator.models import THREAD_ID_PATTERN, Analysis, ChatMessage, RawAnswer
 
 THREAD_ID_RE = re.compile(THREAD_ID_PATTERN)
-DEFAULT_SESSIONS_DIR = "~/.imladris/sessions"
+DEFAULT_SESSIONS_DIR = "~/.mandos/sessions"
 PERSISTED_TURNS_CAP = 200
 _LOCKS: dict[str, asyncio.Lock] = {}
 

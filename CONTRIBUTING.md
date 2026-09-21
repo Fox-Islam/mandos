@@ -1,6 +1,6 @@
 # Contributing
 
-Imladris is a Python + FastMCP project: a single `orchestrator/` package holding
+Mandos is a Python + FastMCP project: a single `orchestrator/` package holding
 the deliberation engine and the FastMCP stdio server (`mcp_server.py`). See
 `docs/architecture/` for the design and current contracts.
 
@@ -37,7 +37,7 @@ abstractions.
 
 Keep changes surgical. Do not vendor third-party source or model weights.
 **Secrets never live in config or the repo** — providers reference an env var by
-name (`api_key_env`); keep token values only in `~/.imladris/.env` (0600), never
+name (`api_key_env`); keep token values only in `~/.mandos/.env` (0600), never
 in the config file.
 
 Keep changes covered by focused tests and update the architecture docs when a public

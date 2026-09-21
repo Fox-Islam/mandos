@@ -1,4 +1,4 @@
-"""Textual app shell for the Imladris configurator."""
+"""Textual app shell for the Mandos configurator."""
 
 from __future__ import annotations
 
@@ -15,14 +15,14 @@ HarnessStatus = dict[str, bool]
 DraftLoader = Callable[..., Draft]
 
 
-class ImladrisApp(App[int]):
+class MandosApp(App[int]):
     """Full-screen configurator app.
 
     Phase 2 owns the app shell and dashboard. Later phases add mutating screens.
     """
 
     CSS_PATH = "app.tcss"
-    TITLE = "imladris"
+    TITLE = "mandos"
     SUB_TITLE = "Council Configurator"
 
     def __init__(

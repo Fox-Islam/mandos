@@ -130,7 +130,7 @@ async def test_complete_never_raises_on_response_validation_error(monkeypatch):
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_no_imladris_depth_header_is_sent():
+async def test_no_mandos_depth_header_is_sent():
     captured = {}
 
     def handler(request):
@@ -142,7 +142,7 @@ async def test_no_imladris_depth_header_is_sent():
     async with httpx.AsyncClient() as client:
         provider = OpenAiCompatibleProvider(desc, client)
         await provider.complete(ChatRequest(system="s", user="u"), deadline=9999999999)
-    assert "x-imladris-depth" not in captured["headers"]
+    assert "x-mandos-depth" not in captured["headers"]
 
 
 @pytest.mark.asyncio

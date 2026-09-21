@@ -1,5 +1,5 @@
-"""Textual configurator for the ``imladris`` console command."""
+"""Textual configurator for the ``mandos`` console command."""
 
-from orchestrator.cli.tui.app import ImladrisApp
+from orchestrator.cli.tui.app import MandosApp
 
-__all__ = ["ImladrisApp"]
+__all__ = ["MandosApp"]

@@ -1,7 +1,12 @@
 # Dependencies
 
-Imladris is a Python 3.13 FastMCP stdio server with one outbound provider client:
-the maintained OpenAI async SDK configured against OpenAI-compatible endpoints.
+Mandos is a Python 3.13 FastMCP stdio server with two outbound clients: the
+maintained OpenAI async SDK for chat providers, and a small in-tree client for Jev.
+
+There is no Python SDK for Jev. `phox/typesafe-sdk-php` is the reference for the wire
+format, not a dependency — `orchestrator/jev/` implements the one POST it needs over
+the `httpx` client the pipeline already pools, which is also what lets the judge call
+reuse a warm connection.
 
 ## Runtime Packages
 
@@ -9,7 +14,7 @@ the maintained OpenAI async SDK configured against OpenAI-compatible endpoints.
 |---|---|
 | `fastmcp` | MCP server, tool, and prompt surface over stdio. |
 | `openai` | Async OpenAI-compatible chat client for panel and judge calls. |
-| `httpx` | Shared async transport underneath the OpenAI SDK. |
+| `httpx` | Shared async transport, under the OpenAI SDK and the Jev client alike. |
 | `pydantic` | Request/response models and config validation. |
 | `PyYAML` | YAML config parsing. |
 | `structlog` | Structured logging, with secret redaction. |
@@ -32,7 +37,8 @@ Docker/image tooling, and the curator/anonymization implementation.
 | Destination | When | Data |
 |---|---|---|
 | Panel providers | Concurrently, once per selected panel member | System prompt, user prompt, optional context, model knobs. |
-| Analysis judge | After at least one panel member succeeds | Question plus all successful raw panel answers. |
+| Generative analyst | For shapes `hybrid`, `verify`, `llm`, and on any Jev fallback | Question, context, and all successful raw panel answers. |
+| Jev | For shapes `hybrid`, `matrix`, `verify` | A `state` of question + context + answers by provider id, and a batch of named questions. One call unless the batch exceeds `judge.questions_per_call`. |
 
 All calls use configured `base_url`s and are outbound only. Provider failures are
 recorded in the response.
@@ -43,9 +49,13 @@ recorded in the response.
 |---|---|
 | `pytest` / `pytest-asyncio` | Unit and async tests. |
 | `anyio` | Async I/O primitives required by `pytest-asyncio`. |
-| `respx` | HTTP mocking for provider-client tests. |
+| `respx` | HTTP mocking for the provider and Jev client tests. |
 | `coverage` | Coverage measurement. |
 | `ruff` | Lint and format gate. |
+
+No test reaches the network. `orchestrator/fakes.py` provides `FakeChatProvider` and
+`FakeJevClient`; the latter answers every question in the shape that question asked
+for, identically on every run, mirroring `FakeTypeSafe` in the PHP SDK.
 
 The normal verification commands are:
 

@@ -14,14 +14,15 @@ from pydantic import ValidationError
 from orchestrator.cli.secrets import DEFAULT_ENV_PATH, expand_user_path, write_env
 from orchestrator.settings import (
     Defaults,
-    ImladrisConfig,
+    JudgeConfig,
+    MandosConfig,
     Preset,
     Price,
     ProviderDescriptor,
     _strip_legacy_config,
 )
 
-DEFAULT_DRAFT_TARGET = "~/.imladris/config.json"
+DEFAULT_DRAFT_TARGET = "~/.mandos/config.json"
 COUNCIL_PRESET = "council"
 LOCAL_ONLY_PRESET = "local-only"
 _UNCHANGED = object()
@@ -47,19 +48,20 @@ class Draft:
     env_path: Path
     providers: list[ProviderDescriptor] = field(default_factory=list)
     defaults: Defaults = field(default_factory=Defaults)
+    judge: JudgeConfig = field(default_factory=JudgeConfig)
     presets: dict[str, Preset] = field(default_factory=dict)
     pricing: dict[str, Price] = field(default_factory=dict)
     token_present: dict[str, bool] = field(default_factory=dict)
     parse_errors: list[ParseError] = field(default_factory=list)
     full_validation_error: str | None = None
 
-    def to_config(self) -> ImladrisConfig:
+    def to_config(self) -> MandosConfig:
         if self.parse_errors:
             raise ValueError("cannot modify a config with malformed records")
         staged = _stage_environment(_validation_stage_values(env_path=self.env_path))
         try:
-            return ImladrisConfig.model_validate(
-                _config_data(self.defaults, self.providers, self.presets, self.pricing)
+            return MandosConfig.model_validate(
+                _config_data(self.defaults, self.providers, self.presets, self.pricing, self.judge)
             )
         except Exception as exc:
             raise ValueError(_validation_message(exc)) from exc
@@ -73,7 +75,7 @@ class TokenUpdate:
     prune_env_keys: tuple[str, ...] = ()
 
 
-ConfigSource = ImladrisConfig | Draft | None
+ConfigSource = MandosConfig | Draft | None
 
 
 def _default_target_path() -> Path:
@@ -82,7 +84,7 @@ def _default_target_path() -> Path:
 
 def default_env_path(home: str | Path | None = None) -> Path:
     if home is not None:
-        return expand_user_path(home) / ".imladris/.env"
+        return expand_user_path(home) / ".mandos/.env"
     return expand_user_path(DEFAULT_ENV_PATH)
 
 
@@ -164,13 +166,13 @@ def _resolve_draft_path(path: str | Path | None) -> Path:
         return explicit
 
     candidates = [
-        os.environ.get("IMLADRIS_CONFIG"),
-        "./imladris.json",
-        "./imladris.yaml",
-        "./imladris.yml",
+        os.environ.get("MANDOS_CONFIG"),
+        "./mandos.json",
+        "./mandos.yaml",
+        "./mandos.yml",
         DEFAULT_DRAFT_TARGET,
-        "~/.imladris/config.yaml",
-        "~/.imladris/config.yml",
+        "~/.mandos/config.yaml",
+        "~/.mandos/config.yml",
     ]
     for candidate in candidates:
         if not candidate:
@@ -228,6 +230,15 @@ def _parse_defaults(data: dict[str, Any], errors: list[ParseError]) -> Defaults:
         return Defaults()
 
 
+def _parse_judge(data: dict[str, Any], errors: list[ParseError]) -> JudgeConfig:
+    raw = data.get("judge") or {}
+    try:
+        return JudgeConfig.model_validate(raw)
+    except ValidationError as exc:
+        errors.append(ParseError("judge", _validation_message(exc), raw))
+        return JudgeConfig()
+
+
 def _parse_presets(data: dict[str, Any], errors: list[ParseError]) -> dict[str, Preset]:
     raw_presets = data.get("presets", {})
     if raw_presets is None:
@@ -267,9 +278,11 @@ def _config_data(
     providers: list[ProviderDescriptor],
     presets: dict[str, Preset],
     pricing: dict[str, Price],
+    judge: JudgeConfig | None = None,
 ) -> dict[str, Any]:
     return {
         "defaults": defaults.model_dump(exclude_none=True),
+        "judge": (judge or JudgeConfig()).model_dump(exclude_none=True),
         "providers": [p.model_dump(exclude_none=True) for p in providers],
         "presets": {name: preset.model_dump(exclude_none=True) for name, preset in presets.items()},
         "pricing": {name: price.model_dump(by_alias=True) for name, price in pricing.items()},
@@ -343,6 +356,7 @@ def load_draft(
     data, parse_errors = _read_config_data(source_path)
     providers = _parse_providers(data, parse_errors)
     defaults = _parse_defaults(data, parse_errors)
+    judge = _parse_judge(data, parse_errors)
     presets = _parse_presets(data, parse_errors)
     pricing = _parse_pricing(data, parse_errors)
 
@@ -350,6 +364,8 @@ def load_draft(
     token_present = {
         p.api_key_env: bool(loaded_env.get(p.api_key_env)) for p in providers if p.api_key_env
     }
+    if judge.uses_jev:
+        token_present[judge.resolved_api_key_env] = bool(loaded_env.get(judge.resolved_api_key_env))
 
     full_validation_error = None
     if source_path.exists() and not parse_errors:
@@ -362,6 +378,7 @@ def load_draft(
         env_path=resolved_env_path,
         providers=providers,
         defaults=defaults,
+        judge=judge,
         presets=presets,
         pricing=pricing,
         token_present=token_present,
@@ -398,6 +415,18 @@ def compute_issues(draft: Draft, harness_status: dict[str, bool] | None = None) 
                 )
             )
 
+    if draft.judge.uses_jev and not draft.token_present.get(
+        draft.judge.resolved_api_key_env, False
+    ):
+        issues.append(
+            Issue(
+                f"Jev judge: token not set ({draft.judge.resolved_api_key_env})",
+                "Edit judge",
+            )
+        )
+    if draft.judge.needs_analysis_model and not draft.defaults.analysis_model:
+        issues.append(Issue("Judge: no analyst behind the Jev judge", "Reassign roles"))
+
     for error in draft.parse_errors:
         issues.append(Issue(f"Malformed {error.location}: {error.message}", "Manual config repair"))
 
@@ -423,11 +452,13 @@ def _provider_to_data(provider: ProviderDescriptor | dict[str, Any]) -> dict[str
 
 def _data_from_source(source: ConfigSource) -> dict[str, Any]:
     if source is None:
-        return _config_data(Defaults(), [], {}, {})
+        return _config_data(Defaults(), [], {}, {}, JudgeConfig())
     if isinstance(source, Draft):
         if source.parse_errors:
             raise ValueError("cannot modify a config with malformed records")
-        return _config_data(source.defaults, source.providers, source.presets, source.pricing)
+        return _config_data(
+            source.defaults, source.providers, source.presets, source.pricing, source.judge
+        )
     return source.model_dump(by_alias=True, exclude_none=True)
 
 
@@ -542,7 +573,7 @@ def _regenerate_presets_data(data: dict[str, Any]) -> None:
     data["presets"] = presets
 
 
-def _assert_config_ops_invariants(config: ImladrisConfig) -> None:
+def _assert_config_ops_invariants(config: MandosConfig) -> None:
     enabled = {p.id: p for p in config.providers if p.enabled}
     if not any("panel" in p.roles for p in enabled.values()):
         raise ValueError("at least one enabled panel member is required")
@@ -561,11 +592,11 @@ def _validate_mutation_data(
     data: dict[str, Any],
     *,
     token_changes: dict[str, str] | None = None,
-) -> ImladrisConfig:
+) -> MandosConfig:
     staged = _stage_environment(_validation_stage_values(token_changes))
     try:
         try:
-            config = ImladrisConfig.model_validate(data)
+            config = MandosConfig.model_validate(data)
         except Exception as exc:
             raise ValueError(_validation_message(exc)) from exc
         _assert_config_ops_invariants(config)
@@ -578,12 +609,12 @@ def _finalize_mutation(
     data: dict[str, Any],
     *,
     token_changes: dict[str, str] | None = None,
-) -> ImladrisConfig:
+) -> MandosConfig:
     _regenerate_presets_data(data)
     return _validate_mutation_data(data, token_changes=token_changes)
 
 
-def regenerate_presets(config: ImladrisConfig) -> ImladrisConfig:
+def regenerate_presets(config: MandosConfig) -> MandosConfig:
     data = _data_from_source(config)
     return _finalize_mutation(data)
 
@@ -593,7 +624,7 @@ def add_member(
     member: ProviderDescriptor | dict[str, Any],
     *,
     token_changes: dict[str, str] | None = None,
-) -> ImladrisConfig:
+) -> MandosConfig:
     data = _data_from_source(config)
     member_data = _provider_to_data(member)
     member_id = member_data["id"]
@@ -636,12 +667,12 @@ def _apply_member_role_changes(data: dict[str, Any], provider: dict[str, Any], n
 
 
 def update_member(
-    config: ImladrisConfig,
+    config: MandosConfig,
     provider_id: str,
     *,
     token_changes: dict[str, str] | None = None,
     **changes: Any,
-) -> ImladrisConfig:
+) -> MandosConfig:
     data = _data_from_source(config)
     provider = _find_provider_data(data, provider_id)
     old_id = str(provider["id"])
@@ -668,7 +699,7 @@ def update_member(
     return _finalize_mutation(data, token_changes=token_changes)
 
 
-def delete_member(config: ConfigSource, provider_id: str) -> ImladrisConfig:
+def delete_member(config: ConfigSource, provider_id: str) -> MandosConfig:
     data = _data_from_source(config)
     provider = _find_provider_data(data, provider_id)
     enabled_panel = [
@@ -686,7 +717,7 @@ def delete_member(config: ConfigSource, provider_id: str) -> ImladrisConfig:
     return _finalize_mutation(data)
 
 
-def set_judge(config: ConfigSource, provider_id: str | None) -> ImladrisConfig:
+def set_judge(config: ConfigSource, provider_id: str | None) -> MandosConfig:
     data = _data_from_source(config)
     if provider_id is not None:
         provider = _find_provider_data(data, provider_id)
@@ -703,7 +734,7 @@ def set_judge(config: ConfigSource, provider_id: str | None) -> ImladrisConfig:
     return _finalize_mutation(data)
 
 
-def set_panel(config: ConfigSource, provider_id: str, enabled: bool) -> ImladrisConfig:
+def set_panel(config: ConfigSource, provider_id: str, enabled: bool) -> MandosConfig:
     data = _data_from_source(config)
     provider = _find_provider_data(data, provider_id)
     roles = [role for role in _roles(provider) if role != "panel"]
@@ -713,13 +744,16 @@ def set_panel(config: ConfigSource, provider_id: str, enabled: bool) -> Imladris
     return _finalize_mutation(data)
 
 
-def referenced_env_keys(config: ImladrisConfig) -> set[str]:
-    return {p.api_key_env for p in config.providers if p.api_key_env}
+def referenced_env_keys(config: MandosConfig) -> set[str]:
+    keys = {p.api_key_env for p in config.providers if p.api_key_env}
+    if config.judge.uses_jev:
+        keys.add(config.judge.resolved_api_key_env)
+    return keys
 
 
 def orphaned_env_keys(
-    before: ImladrisConfig,
-    after: ImladrisConfig,
+    before: MandosConfig,
+    after: MandosConfig,
     candidates: list[str] | tuple[str, ...] | set[str] | None = None,
 ) -> tuple[str, ...]:
     before_keys = referenced_env_keys(before)
@@ -752,7 +786,7 @@ def _token_update_env_change(
 
 
 def plan_token_update(
-    config: ImladrisConfig,
+    config: MandosConfig,
     provider_id: str,
     *,
     api_key_env: str | None | object = _UNCHANGED,
@@ -774,7 +808,7 @@ def plan_token_update(
 
 
 def persist(
-    config: ImladrisConfig,
+    config: MandosConfig,
     token_changes: dict[str, str],
     target_path: str | Path,
     prune_env_keys: list[str] | tuple[str, ...] | set[str] = (),
@@ -786,7 +820,7 @@ def persist(
     previous = _stage_environment(staged_values)
     try:
         try:
-            validated = ImladrisConfig.model_validate(config.model_dump(by_alias=True))
+            validated = MandosConfig.model_validate(config.model_dump(by_alias=True))
             _assert_config_ops_invariants(validated)
         except Exception as exc:
             raise ValueError(_validation_message(exc)) from exc

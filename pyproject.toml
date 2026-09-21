@@ -1,12 +1,12 @@
 [project]
-name = "imladris"
+name = "mandos"
 version = "0.1.0"
-description = "Cross-harness multi-model deliberation (Fusion) MCP server."
+description = "Cross-harness multi-model deliberation MCP server judged by Jev, a calibrated decision model."
 requires-python = ">=3.13"
 license = "MIT"
 license-files = ["LICENSE"]
 readme = "README.md"
-authors = [{ name = "Imladris contributors" }]
+authors = [{ name = "Mandos contributors" }]
 classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.13",
@@ -31,13 +31,13 @@ dependencies = [
 "orchestrator.data" = ["*.json"]
 
 [project.scripts]
-imladris = "orchestrator.cli.app:main"
-imladris-mcp = "orchestrator.mcp_server:main"
+mandos = "orchestrator.cli.app:main"
+mandos-mcp = "orchestrator.mcp_server:main"
 
 [project.urls]
-Homepage = "https://github.com/FeanorsCodeSL/imladris"
-Repository = "https://github.com/FeanorsCodeSL/imladris"
-Issues = "https://github.com/FeanorsCodeSL/imladris/issues"
+Homepage = "https://github.com/Fox-Islam/mandos"
+Repository = "https://github.com/Fox-Islam/mandos"
+Issues = "https://github.com/Fox-Islam/mandos/issues"
 
 [build-system]
 requires = ["setuptools>=68"]

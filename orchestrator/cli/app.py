@@ -1,7 +1,7 @@
-"""The ``imladris`` console script: configurator TUI + ``doctor`` (plan §12.2).
+"""The ``mandos`` console script: configurator TUI + ``doctor`` (plan §12.2).
 
-``main`` dispatches ``imladris`` (full-screen configurator), ``imladris doctor``,
-``imladris refresh-catalog``, ``imladris clear-sessions``, and ``--help``.
+``main`` dispatches ``mandos`` (full-screen configurator), ``mandos doctor``,
+``mandos refresh-catalog``, ``mandos clear-sessions``, and ``--help``.
 """
 
 from __future__ import annotations
@@ -16,39 +16,40 @@ from orchestrator.cli.harness.opencode import opencode_path
 from orchestrator.model_catalog import refresh_cache_if_stale, resolve_model_metadata
 from orchestrator.sessions import clear_sessions
 from orchestrator.settings import (
-    ImladrisConfig,
+    MandosConfig,
     ProviderDescriptor,
+    is_local_base_url,
     load_config,
     load_env_file,
 )
 
-HELP = """imladris - configure the multi-model deliberation council.
+HELP = """mandos - configure the multi-model deliberation council.
 
 Usage:
-  imladris            Run the full-screen configurator TUI.
-  imladris doctor     Show the resolved roster, roles, and wired harnesses (no secrets).
-  imladris refresh-catalog
+  mandos            Run the full-screen configurator TUI.
+  mandos doctor     Show the resolved roster, roles, and wired harnesses (no secrets).
+  mandos refresh-catalog
                       Fetch models.dev metadata into the local catalog cache.
-  imladris clear-sessions [thread_id]
+  mandos clear-sessions [thread_id]
                       Clear all local council sessions, or one thread when supplied.
-  imladris --help     Show this help.
+  mandos --help     Show this help.
 
-The configurator writes ~/.imladris/config.json and ~/.imladris/.env (0600), then wires
-the harnesses you select (Claude Code / Codex / OpenCode) to launch `imladris-mcp` over
+The configurator writes ~/.mandos/config.json and ~/.mandos/.env (0600), then wires
+the harnesses you select (Claude Code / Codex / OpenCode) to launch `mandos-mcp` over
 stdio.
 """
 
 
 def detect_wired_harnesses(home: Path) -> dict[str, bool]:
-    """Best-effort detection of which harnesses already carry an imladris entry."""
+    """Best-effort detection of which harnesses already carry an mandos entry."""
     home = Path(home).expanduser()
     wired = {}
     claude = claude_code_path(home, "global")
-    wired["claude-code"] = claude.exists() and "imladris" in claude.read_text(encoding="utf-8")
+    wired["claude-code"] = claude.exists() and "mandos" in claude.read_text(encoding="utf-8")
     codex = codex_path(home)
-    wired["codex"] = codex.exists() and "imladris" in codex.read_text(encoding="utf-8")
+    wired["codex"] = codex.exists() and "mandos" in codex.read_text(encoding="utf-8")
     opencode = opencode_path(home)
-    wired["opencode"] = opencode.exists() and "imladris" in opencode.read_text(encoding="utf-8")
+    wired["opencode"] = opencode.exists() and "mandos" in opencode.read_text(encoding="utf-8")
     return wired
 
 
@@ -64,18 +65,34 @@ def _doctor_member_line(p: ProviderDescriptor) -> str:
     return f"  - {p.id}: roles={','.join(p.roles)} model={p.model}{ctx} [{where}]"
 
 
+def _doctor_judge_lines(config: MandosConfig) -> list[str]:
+    """Report the judge that will actually decide, and its key state by name-free
+    presence only (the variable name is a secret-adjacent detail ``safe_status`` also
+    withholds)."""
+    judge = config.judge
+    analyst = config.defaults.analysis_model or "(none)"
+    if not judge.uses_jev:
+        return [f"Judge: llm - {analyst}"]
+    where = "on-prem" if is_local_base_url(judge.resolved_base_url) else "off-prem"
+    key = "set" if judge.api_key else "MISSING"
+    lines = [f"Judge: {judge.shape} - Jev {judge.model} via {judge.provider} [{where}, key {key}]"]
+    if judge.needs_analysis_model:
+        lines.append(f"  analyst behind it: {analyst}")
+    return lines
+
+
 def doctor_report(
-    config: ImladrisConfig,
+    config: MandosConfig,
     wired: dict[str, bool],
     issues: list[str] | None = None,
 ) -> str:
     """Render a secret-free health report: roster, roles, off-prem flag, harnesses."""
-    lines = ["Imladris configuration", "=" * 22, "", "Council members:"]
+    lines = ["Mandos configuration", "=" * 22, "", "Council members:"]
     for p in config.providers:
         if p.enabled:
             lines.append(_doctor_member_line(p))
     lines.append("")
-    lines.append(f"Default analysis (judge): {config.defaults.analysis_model or '(none)'}")
+    lines.extend(_doctor_judge_lines(config))
     lines.append(f"Default preset: {config.defaults.preset or '(none)'}")
     lines.append(
         "Budget thresholds: "
@@ -100,12 +117,12 @@ def doctor() -> int:
     try:
         config = load_config()
     except Exception as exc:
-        print(f"No usable Imladris config found: {exc}")
+        print(f"No usable Mandos config found: {exc}")
         draft = load_draft()
         issues = compute_issues(draft, wired)
         for issue in issues:
             print(f"- {issue.label} -> {issue.action}")
-        print("Run `imladris` to create or repair one.")
+        print("Run `mandos` to create or repair one.")
         return 1
     draft = load_draft()
     issues = [issue.label for issue in compute_issues(draft, wired)]
@@ -146,9 +163,9 @@ def main(argv: list[str] | None = None) -> int:
         return refresh_catalog_command()
     if args and args[0] == "clear-sessions":
         return clear_sessions_command(args[1] if len(args) > 1 else None)
-    from orchestrator.cli.tui import ImladrisApp
+    from orchestrator.cli.tui import MandosApp
 
-    result = ImladrisApp().run()
+    result = MandosApp().run()
     return 0 if result is None else int(result)
 
 

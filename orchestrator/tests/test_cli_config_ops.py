@@ -18,7 +18,7 @@ from orchestrator.cli.config_ops import (
     set_panel,
     update_member,
 )
-from orchestrator.settings import Defaults, ImladrisConfig, ProviderDescriptor, load_config
+from orchestrator.settings import Defaults, MandosConfig, ProviderDescriptor, load_config
 
 
 def _member(
@@ -50,7 +50,7 @@ def _all_roles(id: str = "solo", *, api_key_env: str | None = None) -> ProviderD
 def test_load_draft_reads_valid_config_and_env_file(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.delenv("K_KEY", raising=False)
-    env = tmp_path / ".imladris/.env"
+    env = tmp_path / ".mandos/.env"
     env.parent.mkdir(parents=True)
     env.write_text("K_KEY=secret\n", encoding="utf-8")
     config_path = tmp_path / "config.json"
@@ -83,7 +83,9 @@ def test_load_draft_reads_valid_config_and_env_file(tmp_path, monkeypatch):
     assert draft.source_path == config_path
     assert [provider.id for provider in draft.providers] == ["cloud"]
     assert draft.providers[0].roles == ["panel", "judge"]
-    assert draft.token_present == {"K_KEY": True}
+    # The Jev judge's key is tracked alongside the members' so the configurator can
+    # flag it missing; the default shape needs one and none is set here.
+    assert draft.token_present == {"K_KEY": True, "TYPESAFE_API_KEY": False}
     assert draft.pricing["cloud"].input == 1.0
     assert draft.parse_errors == []
     assert draft.full_validation_error is None
@@ -112,7 +114,7 @@ def test_load_draft_preserves_config_with_missing_env_var(tmp_path, monkeypatch)
     issues = compute_issues(draft)
 
     assert draft.providers[0].id == "cloud"
-    assert draft.token_present == {"MISSING_KEY": False}
+    assert draft.token_present == {"MISSING_KEY": False, "TYPESAFE_API_KEY": False}
     assert "MISSING_KEY" in (draft.full_validation_error or "")
     assert any(issue.label == "cloud: token not set (MISSING_KEY)" for issue in issues)
 
@@ -122,12 +124,12 @@ def test_load_draft_missing_file_uses_default_target(tmp_path, monkeypatch):
     work.mkdir()
     monkeypatch.chdir(work)
     monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.delenv("IMLADRIS_CONFIG", raising=False)
+    monkeypatch.delenv("MANDOS_CONFIG", raising=False)
 
     draft = load_draft()
     issues = compute_issues(draft)
 
-    assert draft.source_path == tmp_path / ".imladris/config.json"
+    assert draft.source_path == tmp_path / ".mandos/config.json"
     assert draft.providers == []
     assert draft.parse_errors == []
     assert {issue.label for issue in issues} >= {
@@ -171,19 +173,19 @@ def test_load_draft_does_not_call_full_config_validator(tmp_path, monkeypatch):
     )
 
     def fail_model_validate(*_args, **_kwargs):
-        raise AssertionError("load_draft must not call ImladrisConfig.model_validate")
+        raise AssertionError("load_draft must not call MandosConfig.model_validate")
 
-    monkeypatch.setattr(ImladrisConfig, "model_validate", fail_model_validate)
+    monkeypatch.setattr(MandosConfig, "model_validate", fail_model_validate)
 
     draft = load_draft(config_path)
 
     assert [provider.id for provider in draft.providers] == ["ok"]
 
 
-def test_load_draft_respects_imladris_config_and_persist_writes_back(tmp_path, monkeypatch):
+def test_load_draft_respects_mandos_config_and_persist_writes_back(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     config_path = tmp_path / "chosen.json"
-    monkeypatch.setenv("IMLADRIS_CONFIG", str(config_path))
+    monkeypatch.setenv("MANDOS_CONFIG", str(config_path))
     _write_json(
         config_path,
         {
@@ -203,7 +205,7 @@ def test_load_draft_respects_imladris_config_and_persist_writes_back(tmp_path, m
 
 
 def test_delete_member_clears_roles_and_presets():
-    config = ImladrisConfig(
+    config = MandosConfig(
         providers=[
             _member("panel", ["panel"]),
             _member("judge", ["judge"]),
@@ -224,7 +226,7 @@ def test_delete_member_clears_roles_and_presets():
 
 
 def test_delete_member_rejects_last_enabled_panel_member():
-    config = ImladrisConfig(
+    config = MandosConfig(
         providers=[_all_roles()],
         defaults=Defaults(analysis_model="solo"),
     )
@@ -234,7 +236,7 @@ def test_delete_member_rejects_last_enabled_panel_member():
 
 
 def test_role_ops_move_singleton_roles_and_allow_judge_only():
-    config = ImladrisConfig(
+    config = MandosConfig(
         providers=[
             _member("p1", ["panel"]),
             _member("p2", ["panel"]),
@@ -257,7 +259,7 @@ def test_role_ops_move_singleton_roles_and_allow_judge_only():
 
 
 def test_regenerate_local_only_allows_keyless_judge_only():
-    config = ImladrisConfig(
+    config = MandosConfig(
         providers=[
             _member("panel", ["panel"]),
             _member("judge", ["judge"]),
@@ -286,7 +288,7 @@ def test_persist_stages_new_token_before_validation(tmp_path, monkeypatch):
     reloaded = load_config(str(target))
     assert reloaded.providers[0].api_key_env == "NEW_KEY"
     assert "secret" not in target.read_text(encoding="utf-8")
-    assert "NEW_KEY=secret" in (tmp_path / ".imladris/.env").read_text(encoding="utf-8")
+    assert "NEW_KEY=secret" in (tmp_path / ".mandos/.env").read_text(encoding="utf-8")
 
 
 def test_persist_validation_failure_writes_nothing_and_rolls_back_env(tmp_path, monkeypatch):
@@ -294,12 +296,12 @@ def test_persist_validation_failure_writes_nothing_and_rolls_back_env(tmp_path, 
     monkeypatch.delenv("BAD_KEY", raising=False)
     target = tmp_path / "config.json"
     backup = tmp_path / "config.json.bak"
-    env = tmp_path / ".imladris/.env"
+    env = tmp_path / ".mandos/.env"
     env.parent.mkdir(parents=True)
     target.write_text("original\n", encoding="utf-8")
     backup.write_text("backup\n", encoding="utf-8")
     env.write_text("OLD=1\n", encoding="utf-8")
-    invalid = ImladrisConfig(
+    invalid = MandosConfig(
         providers=[_member("judge", ["judge"])],
         defaults=Defaults(analysis_model="judge"),
     )
@@ -316,10 +318,10 @@ def test_persist_validation_failure_writes_nothing_and_rolls_back_env(tmp_path, 
 def test_env_var_rename_with_blank_token_copies_old_value_and_prunes(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("OLD_KEY", "old-secret")
-    env = tmp_path / ".imladris/.env"
+    env = tmp_path / ".mandos/.env"
     env.parent.mkdir(parents=True)
     env.write_text("OLD_KEY=old-secret\n", encoding="utf-8")
-    config = ImladrisConfig(
+    config = MandosConfig(
         providers=[_all_roles("cloud", api_key_env="OLD_KEY")],
         defaults=Defaults(analysis_model="cloud"),
     )
@@ -345,10 +347,10 @@ def test_env_var_rename_with_blank_token_copies_old_value_and_prunes(tmp_path, m
 def test_env_var_rename_with_new_token_prunes_old_key(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("OLD_KEY", "old-secret")
-    env = tmp_path / ".imladris/.env"
+    env = tmp_path / ".mandos/.env"
     env.parent.mkdir(parents=True)
     env.write_text("OLD_KEY=old-secret\n", encoding="utf-8")
-    config = ImladrisConfig(
+    config = MandosConfig(
         providers=[_all_roles("cloud", api_key_env="OLD_KEY")],
         defaults=Defaults(analysis_model="cloud"),
     )
@@ -368,7 +370,7 @@ def test_env_var_rename_with_new_token_prunes_old_key(tmp_path, monkeypatch):
 
 def test_env_var_rename_missing_old_value_errors_without_writing(tmp_path, monkeypatch):
     monkeypatch.setenv("OLD_KEY", "old-secret")
-    config = ImladrisConfig(
+    config = MandosConfig(
         providers=[_all_roles("cloud", api_key_env="OLD_KEY")],
         defaults=Defaults(analysis_model="cloud"),
     )
@@ -384,10 +386,10 @@ def test_env_var_rename_missing_old_value_errors_without_writing(tmp_path, monke
 def test_orphan_key_pruning_removes_unreferenced_deleted_member_key(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("FOO_API_KEY", "secret")
-    env = tmp_path / ".imladris/.env"
+    env = tmp_path / ".mandos/.env"
     env.parent.mkdir(parents=True)
     env.write_text("FOO_API_KEY=secret\n", encoding="utf-8")
-    config = ImladrisConfig(
+    config = MandosConfig(
         providers=[
             _member("cloud", ["panel"], api_key_env="FOO_API_KEY"),
             _all_roles("local"),
@@ -404,10 +406,10 @@ def test_orphan_key_pruning_removes_unreferenced_deleted_member_key(tmp_path, mo
 def test_orphan_key_pruning_keeps_key_referenced_by_another_member(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("FOO_API_KEY", "secret")
-    env = tmp_path / ".imladris/.env"
+    env = tmp_path / ".mandos/.env"
     env.parent.mkdir(parents=True)
     env.write_text("FOO_API_KEY=secret\n", encoding="utf-8")
-    config = ImladrisConfig(
+    config = MandosConfig(
         providers=[
             _member("cloud1", ["panel"], api_key_env="FOO_API_KEY"),
             _member("cloud2", ["panel"], api_key_env="FOO_API_KEY"),

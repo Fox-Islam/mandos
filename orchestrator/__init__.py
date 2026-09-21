@@ -1,4 +1,4 @@
-"""Imladris — cross-harness multi-model deliberation (Fusion) MCP server.
+"""Mandos — cross-harness multi-model deliberation (Fusion) MCP server.
 
 The deliberation engine: fan a prompt out to a configurable panel of
 OpenAI-compatible providers, run an API-side analysis judge for structured

@@ -1,7 +1,7 @@
 # Third-Party Notices
 
 This file records the third-party components intentionally referenced by the
-Imladris source distribution. It is engineering inventory, not legal advice. The
+Mandos source distribution. It is engineering inventory, not legal advice. The
 repository does not vendor Python wheels or model weights; distributors should
 attach their own generated SBOM for the exact artifacts they ship.
 
@@ -21,7 +21,7 @@ attach their own generated SBOM for the exact artifacts they ship.
 
 ## Provider Endpoints
 
-Imladris calls operator-configured HTTP endpoints (local vLLM, OpenRouter,
+Mandos calls operator-configured HTTP endpoints (local vLLM, OpenRouter,
 MiniMax, DeepSeek, …) over the OpenAI-compatible `/v1/chat/completions` API. It
 does not vendor or redistribute those services or their models; operators are
 responsible for honouring each provider's terms and each model's license.

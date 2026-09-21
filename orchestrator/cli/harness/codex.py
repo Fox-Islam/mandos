@@ -1,4 +1,4 @@
-"""Wire Codex: ``[mcp_servers.imladris]`` in ``~/.codex/config.toml`` — plan §11.2.
+"""Wire Codex: ``[mcp_servers.mandos]`` in ``~/.codex/config.toml`` — plan §11.2.
 
 No stdlib TOML *writer* exists, and a general re-serialiser would risk mangling
 unrelated Codex settings. So this splices only our own table textually: every other
@@ -10,9 +10,9 @@ from __future__ import annotations
 import tomllib
 from pathlib import Path
 
-from orchestrator.cli.harness.common import IMLADRIS_CONFIG_VALUE, MCP_COMMAND, backup
+from orchestrator.cli.harness.common import MANDOS_CONFIG_VALUE, MCP_COMMAND, backup
 
-_HEADER = "[mcp_servers.imladris]"
+_HEADER = "[mcp_servers.mandos]"
 _TOOL_OUTPUT_TOKEN_LIMIT = "tool_output_token_limit"
 
 
@@ -62,7 +62,7 @@ def _block() -> list[str]:
     return [
         _HEADER,
         f'command = "{MCP_COMMAND}"',
-        f'env = {{ IMLADRIS_CONFIG = "{IMLADRIS_CONFIG_VALUE}" }}',
+        f'env = {{ MANDOS_CONFIG = "{MANDOS_CONFIG_VALUE}" }}',
     ]
 
 

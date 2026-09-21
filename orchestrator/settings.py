@@ -13,6 +13,10 @@ from urllib.parse import urlparse
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from orchestrator.jev.client import DEFAULT_MODEL as JEV_DEFAULT_MODEL
+from orchestrator.jev.client import PROVIDERS as JEV_PROVIDERS
+from orchestrator.models import JudgeShape
+
 Role = Literal["panel", "judge"]
 ContextWindowSource = Literal["override", "endpoint", "modelsdev", "unknown"]
 
@@ -41,11 +45,68 @@ class Defaults(BaseModel):
     analysis_model: str | None = None
     timeout_s: float = 90
     max_depth: int = 1
-    max_tokens: int | None = 1024
+    # 1024 truncated real panel answers into stubs and, worse, cut the generative
+    # judge off mid-JSON on any panel worth convening. OpenRouter's Fusion allows
+    # 16000 per inner call; 4096 is a middle that answers properly without inviting
+    # an eight-member panel to write essays.
+    max_tokens: int | None = 4096
+    # The generative judge and the claim extractor summarise the whole panel, so they
+    # need more room than any single panellist.
+    analysis_max_tokens: int | None = 8192
     temperature: float = 0.2
     budget_warning_ratio: float = Field(default=0.75, gt=0, lt=1)
     budget_error_ratio: float = Field(default=0.9, gt=0, le=1)
     session_max_turns: int = Field(default=12, ge=1)
+
+
+class JudgeConfig(BaseModel):
+    """The Jev judge.
+
+    ``shape`` decides what runs (see :mod:`orchestrator.judge`). ``llm`` needs no Jev
+    at all and falls through to the generative analyst named by
+    ``defaults.analysis_model``; every other shape calls Jev and falls back to that
+    analyst only if Jev cannot deliver.
+
+    ``api_key_env`` names the environment variable holding the key — never the key
+    itself, and the name is not returned by ``safe_status``. Left unset it follows the
+    provider, so switching provider switches which key is read, exactly as the PHP SDK
+    does.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    shape: JudgeShape = "hybrid"
+    provider: Literal["typesafe", "openrouter"] = "typesafe"
+    model: str = JEV_DEFAULT_MODEL
+    base_url: str | None = None
+    api_key_env: str | None = None
+    timeout_s: float = 30
+    max_retries: int = 2
+    # Jev answers a batch in parallel, so this bounds one request body rather than
+    # cost: raising it makes a judge round trip wider, not slower.
+    questions_per_call: int = Field(default=60, ge=1)
+    headers: dict[str, str] = Field(default_factory=dict)
+
+    @property
+    def resolved_api_key_env(self) -> str:
+        return self.api_key_env or JEV_PROVIDERS[self.provider]["api_key_env"]
+
+    @property
+    def resolved_base_url(self) -> str:
+        return self.base_url or JEV_PROVIDERS[self.provider]["base_url"]
+
+    @property
+    def api_key(self) -> str | None:
+        return os.environ.get(self.resolved_api_key_env)
+
+    @property
+    def uses_jev(self) -> bool:
+        return self.shape != "llm"
+
+    @property
+    def needs_analysis_model(self) -> bool:
+        """``matrix`` is the only shape with no generative call in it. The others
+        either write the analysis or propose what Jev should grade."""
+        return self.shape in ("llm", "hybrid", "verify")
 
 
 class ProviderDescriptor(BaseModel):
@@ -130,9 +191,10 @@ def _validate_preset(name: str, preset: Preset, enabled: dict[str, ProviderDescr
     _require_role(enabled, preset.analysis, "judge", f"preset {name} analysis")
 
 
-class ImladrisConfig(BaseModel):
+class MandosConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     defaults: Defaults = Field(default_factory=Defaults)
+    judge: JudgeConfig = Field(default_factory=JudgeConfig)
     providers: list[ProviderDescriptor]
     presets: dict[str, Preset] = Field(default_factory=dict)
     pricing: dict[str, Price] = Field(default_factory=dict)
@@ -151,7 +213,39 @@ class ImladrisConfig(BaseModel):
         _require_role(enabled, self.defaults.analysis_model, "judge", "defaults.analysis_model")
         for name, preset in self.presets.items():
             _validate_preset(name, preset, enabled)
+        self._validate_judge()
         return self
+
+    def _validate_judge(self) -> None:
+        """Warn, never raise, on a judge that cannot run as configured.
+
+        A missing Jev key or a Jev shape with no generative analyst behind it is a real
+        misconfiguration, but it is not worth refusing to load over: the pipeline
+        degrades to the fallback judge and records ``meta.judge_error``, and the panel
+        answers still come back. Refusing here would take the whole deliberation down
+        to save the analysis, which is the wrong trade (golden rule: partial results
+        are normal).
+        """
+        if self.judge.uses_jev and not self.judge.api_key:
+            warnings.warn(
+                f"judge.shape={self.judge.shape!r} needs Jev, but "
+                f"{self.judge.resolved_api_key_env} is unset; the judge will fall back "
+                "to defaults.analysis_model",
+                stacklevel=2,
+            )
+        if self.judge.needs_analysis_model and not self.defaults.analysis_model:
+            what = (
+                "writes the analysis"
+                if self.judge.shape == "llm"
+                else "proposes the claims Jev decides"
+                if self.judge.shape == "hybrid"
+                else "writes the analysis Jev verifies"
+            )
+            warnings.warn(
+                f"judge.shape={self.judge.shape!r} has no defaults.analysis_model, which "
+                f"{what}; deliberations will return raw answers with no analysis",
+                stacklevel=2,
+            )
 
     def _warn_unknown_pricing_keys(self) -> None:
         """Non-fatal: a ``pricing`` key that matches no provider id is a likely typo
@@ -196,8 +290,16 @@ class ImladrisConfig(BaseModel):
             for p in self.provider_map().values()
         ]
 
+        judge_base_url = self.judge.resolved_base_url
+        judge_view = self.judge.model_dump(exclude={"api_key_env", "headers"})
+        judge_view["requires_secret"] = self.judge.uses_jev
+        judge_view["base_url"] = judge_base_url
+        judge_view["egress"] = "on-prem" if is_local_base_url(judge_base_url) else "off-prem"
+        judge_view["headers"] = sorted(self.judge.headers)
+
         return {
             "defaults": self.defaults.model_dump(),
+            "judge": judge_view,
             "providers": [provider_view(p) for p in self.providers],
             "presets": {k: v.model_dump() for k, v in self.presets.items()},
             "pricing": {k: v.model_dump(by_alias=True) for k, v in self.pricing.items()},
@@ -213,18 +315,18 @@ def _resolve_path(path: str | None) -> Path:
     home = Path.home()
     candidates = [
         path,
-        os.environ.get("IMLADRIS_CONFIG"),
-        "./imladris.json",
-        "./imladris.yaml",
-        "./imladris.yml",
-        str(home / ".imladris/config.json"),
-        str(home / ".imladris/config.yaml"),
-        str(home / ".imladris/config.yml"),
+        os.environ.get("MANDOS_CONFIG"),
+        "./mandos.json",
+        "./mandos.yaml",
+        "./mandos.yml",
+        str(home / ".mandos/config.json"),
+        str(home / ".mandos/config.yaml"),
+        str(home / ".mandos/config.yml"),
     ]
     for item in candidates:
         if item and Path(item).exists():
             return Path(item)
-    raise FileNotFoundError("No Imladris config found")
+    raise FileNotFoundError("No Mandos config found")
 
 
 def _strip_legacy_defaults(stripped: dict, removed: set[str]) -> None:
@@ -271,20 +373,20 @@ def _strip_legacy_config(data: Any, *, warn: bool = False) -> Any:
 
     if warn and removed:
         warnings.warn(
-            "Ignoring removed Imladris config fields: " + ", ".join(sorted(removed)),
+            "Ignoring removed Mandos config fields: " + ", ".join(sorted(removed)),
             stacklevel=2,
         )
     return stripped
 
 
-def load_config(path: str | None = None) -> ImladrisConfig:
+def load_config(path: str | None = None) -> MandosConfig:
     resolved = _resolve_path(path)
     text = resolved.read_text(encoding="utf-8")
     if resolved.suffix.lower() == ".json":
         data = json.loads(text) if text.strip() else {}
     else:
         data = yaml.safe_load(text) or {}
-    return ImladrisConfig.model_validate(_strip_legacy_config(data, warn=True))
+    return MandosConfig.model_validate(_strip_legacy_config(data, warn=True))
 
 
 def _parse_env_line(line: str) -> tuple[str, str] | None:
@@ -326,14 +428,14 @@ def _warn_if_env_permissive(target: Path) -> None:
 
 
 def load_env_file(path: str | Path | None = None) -> None:
-    """Load ``~/.imladris/.env`` into the environment without overriding set vars.
+    """Load ``~/.mandos/.env`` into the environment without overriding set vars.
 
     Tiny stdlib loader (no new dependency): tolerates a missing file, ignores blank
     lines and ``#`` comments, accepts an optional ``export`` prefix, and unwraps a
     single layer of matching single/double quotes. Existing environment variables
     win — already-exported secrets are never clobbered (plan §10).
     """
-    target = Path(path) if path is not None else Path.home() / ".imladris/.env"
+    target = Path(path) if path is not None else Path.home() / ".mandos/.env"
     if not target.exists():
         return
     _warn_if_env_permissive(target)

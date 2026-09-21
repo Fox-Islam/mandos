@@ -1,4 +1,4 @@
-"""Wire Claude Code: ``mcpServers.imladris`` in ``~/.claude.json`` (global) or a
+"""Wire Claude Code: ``mcpServers.mandos`` in ``~/.claude.json`` (global) or a
 project ``.mcp.json`` (workspace) — plan §11.1."""
 
 from __future__ import annotations
@@ -6,7 +6,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
-from orchestrator.cli.harness.common import IMLADRIS_CONFIG_VALUE, MCP_COMMAND, merge_json
+from orchestrator.cli.harness.common import MANDOS_CONFIG_VALUE, MCP_COMMAND, merge_json
 
 Scope = Literal["global", "workspace"]
 
@@ -17,7 +17,7 @@ def claude_code_path(base: Path, scope: Scope) -> Path:
 
 
 def wire_claude_code(base: Path, scope: Scope = "global") -> Path:
-    """Merge the imladris MCP entry into Claude Code config.
+    """Merge the mandos MCP entry into Claude Code config.
 
     ``base`` is the home directory for ``global`` scope, or the project root for
     ``workspace`` scope.
@@ -26,9 +26,9 @@ def wire_claude_code(base: Path, scope: Scope = "global") -> Path:
 
     def mutate(data: dict) -> None:
         servers = data.setdefault("mcpServers", {})
-        servers["imladris"] = {
+        servers["mandos"] = {
             "command": MCP_COMMAND,
-            "env": {"IMLADRIS_CONFIG": IMLADRIS_CONFIG_VALUE},
+            "env": {"MANDOS_CONFIG": MANDOS_CONFIG_VALUE},
         }
 
     return merge_json(path, mutate)

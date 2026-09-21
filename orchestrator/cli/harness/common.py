@@ -7,8 +7,8 @@ import shutil
 from collections.abc import Callable
 from pathlib import Path
 
-MCP_COMMAND = "imladris-mcp"
-IMLADRIS_CONFIG_VALUE = "~/.imladris/config.json"
+MCP_COMMAND = "mandos-mcp"
+MANDOS_CONFIG_VALUE = "~/.mandos/config.json"
 
 
 def backup(path: Path) -> Path | None:

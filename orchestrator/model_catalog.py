@@ -32,7 +32,7 @@ OPENAI_COMPATIBLE_NPM_PACKAGES = frozenset(
         "@openrouter/ai-sdk-provider",
     }
 )
-DEFAULT_CACHE_PATH = "~/.imladris/model-catalog-cache.json"
+DEFAULT_CACHE_PATH = "~/.mandos/model-catalog-cache.json"
 CACHE_MAX_AGE_SECONDS = 7 * 24 * 60 * 60
 _DATE_SUFFIX_RE = re.compile(r"-20\d{2}-\d{2}-\d{2}$")
 
@@ -86,7 +86,7 @@ def normalize_model_id(value: str) -> str:
 def npm_catalog_allowed(package_name: str) -> bool:
     """Return whether an npm catalog source is allowlisted.
 
-    Imladris never installs or executes npm packages; this gate exists so any
+    Mandos never installs or executes npm packages; this gate exists so any
     future imported package data path remains explicit.
     """
     return package_name in OPENAI_COMPATIBLE_NPM_PACKAGES
@@ -354,7 +354,7 @@ def fetch_modelsdev_catalog(
 ) -> list[ModelMetadata] | None:
     """Fetch models.dev ``api.json`` and return OpenAI-compatible model metadata.
 
-    The response is parsed as data only. Imladris never installs or executes the
+    The response is parsed as data only. Mandos never installs or executes the
     provider npm packages listed by models.dev.
     """
     try:

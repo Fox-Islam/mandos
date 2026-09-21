@@ -1,19 +1,24 @@
 # Security Architecture
 
-Imladris runs as a local stdio subprocess spawned by the harness. It has no
+Mandos runs as a local stdio subprocess spawned by the harness. It has no
 network listener. Its only network traffic is outbound HTTPS to configured
-OpenAI-compatible provider `base_url`s.
+OpenAI-compatible provider `base_url`s and to the configured Jev endpoint.
 
 ## Secrets
 
-Provider credentials are env-only:
+Provider **and Jev** credentials are env-only:
 
-- Config stores `api_key_env`, the name of the environment variable.
-- Secret values live in `~/.imladris/.env` or the existing process environment.
+- Config stores `api_key_env`, the name of the environment variable. For the judge,
+  leaving it unset resolves to the provider's own variable (`TYPESAFE_API_KEY` or
+  `OPENROUTER_API_KEY`) — still a name, never a value.
+- Secret values live in `~/.mandos/.env` or the existing process environment.
 - `load_env_file()` sets unset variables only.
-- `imladris_status()` strips `api_key_env` and returns only `requires_secret`.
+- `mandos_status()` strips `api_key_env` from providers and from the judge, returning
+  only `requires_secret`.
+- Jev error bodies are truncated to 200 characters before they reach a log or a
+  result, because an error body can echo the state that was sent.
 
-Never put provider key values in `config.json`, docs, logs, or tests.
+Never put key values in `config.json`, docs, logs, or tests.
 
 ## Data Egress
 
@@ -22,21 +27,30 @@ The egress boundary is the configured provider roster:
 - Every non-local panel provider receives the full prompt and optional `CONTEXT:`
   block.
 - In session mode, panel providers receive reconstructed prior user/assistant turns
-  from `~/.imladris/sessions/<thread_id>.json`, so a session sends more off-prem each
+  from `~/.mandos/sessions/<thread_id>.json`, so a session sends more off-prem each
   turn than a one-shot. The session file stays local; only an all-local panel keeps the
   history fully on-prem.
-- The analysis judge receives the question plus every successful raw panel answer.
+- The judge receives the question, the `CONTEXT:` block, and every successful raw
+  panel answer. This is true of the generative analyst and of Jev alike: a Jev call's
+  `state` carries the question, the context and every answer keyed by provider id.
 - The response returns all successful raw panel answers to the harness.
 
-For sensitive prompts, use an all-local panel and local analysis judge, and verify
-the resolved config with `imladris_status`.
+**The Jev judge is an egress destination.** `api.typesafe.ai` and `openrouter.ai` are
+off-prem, so a Jev shape sends the whole deliberation off-prem even when every panel
+member is local. For a deliberation that must stay on the network, either set
+`judge.base_url` to a self-hosted Jev endpoint or set `judge.shape: "llm"` with a
+local analyst. `mandos_status()` and `mandos doctor` both report the judge's resolved
+endpoint as `on-prem` or `off-prem` so this is checkable rather than assumed.
+
+For sensitive prompts, use an all-local panel, an on-prem or local judge, and verify
+the resolved config with `mandos_status`.
 
 ## Session Files
 
-Council sessions are stored locally under `~/.imladris/sessions/` using validated
+Council sessions are stored locally under `~/.mandos/sessions/` using validated
 `thread_id` filenames (`^[A-Za-z0-9_-]{1,64}$`, path-contained), atomic writes, a
 per-thread lock, and restrictive `0600` permissions. The files are kept until
-explicitly cleared with `imladris_clear_sessions`; there is no auto-prune.
+explicitly cleared with `mandos_clear_sessions`; there is no auto-prune.
 
 Store failures degrade rather than crash: an unreadable or corrupt session starts from
 empty history (turn 1) and the response still returns; an unwritable session returns
@@ -66,11 +80,12 @@ the response carries `meta.failure = all_panels_failed`.
 
 `run_deliberation()` checks `request.depth >= defaults.max_depth` and returns
 `fusion_invocation_capped` before fan-out. In normal stdio use the tool does not
-receive inbound depth, so this mainly protects Imladris-as-panel-member setups.
+receive inbound depth, so this mainly protects Mandos-as-panel-member setups.
 
 ## Operator Responsibilities
 
 - Keep `.env` mode restrictive and out of version control.
 - Restrict outbound connectivity at the host or firewall layer when required.
-- Treat provider outputs as untrusted external text.
-- Prefer local-only presets for confidential prompts.
+- Treat provider outputs as untrusted external text. This includes anything the judge
+  derives from them: a claim string in `analysis` originated in a provider's answer.
+- Prefer local-only presets and an on-prem judge for confidential prompts.

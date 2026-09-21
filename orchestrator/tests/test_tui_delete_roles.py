@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from textual.widgets import Button, Checkbox, Select, Static
 
-from orchestrator.cli.tui import ImladrisApp
+from orchestrator.cli.tui import MandosApp
 from orchestrator.cli.tui.screens.delete_member import DeleteMemberScreen
 from orchestrator.cli.tui.screens.roles import RolesScreen
 
@@ -81,11 +81,11 @@ def _space_id_config_data() -> dict:
     }
 
 
-def _status(app: ImladrisApp, selector: str) -> str:
+def _status(app: MandosApp, selector: str) -> str:
     return str(app.screen.query_one(selector, Static).content)
 
 
-async def _open_delete(app: ImladrisApp, pilot, cursor_down: int = 0) -> DeleteMemberScreen:
+async def _open_delete(app: MandosApp, pilot, cursor_down: int = 0) -> DeleteMemberScreen:
     for _ in range(cursor_down):
         await pilot.press("down")
     await pilot.press("left", "down", "down", "enter")
@@ -94,14 +94,14 @@ async def _open_delete(app: ImladrisApp, pilot, cursor_down: int = 0) -> DeleteM
     return app.screen
 
 
-async def _open_roles(app: ImladrisApp, pilot) -> RolesScreen:
+async def _open_roles(app: MandosApp, pilot) -> RolesScreen:
     await pilot.press("left", "down", "down", "down", "enter")
     await pilot.pause()
     assert isinstance(app.screen, RolesScreen)
     return app.screen
 
 
-async def _wait_for_dashboard(app: ImladrisApp, pilot) -> None:
+async def _wait_for_dashboard(app: MandosApp, pilot) -> None:
     for _ in range(20):
         await pilot.pause(0.05)
         if not isinstance(app.screen, DeleteMemberScreen | RolesScreen):
@@ -116,11 +116,11 @@ async def test_delete_plain_panel_member_removes_roster_preset_and_env_key(tmp_p
     monkeypatch.setenv("OTHER_KEY", "other-secret")
     config_path = tmp_path / "config.json"
     _write_json(config_path, _config_data())
-    env = tmp_path / ".imladris/.env"
+    env = tmp_path / ".mandos/.env"
     env.parent.mkdir(parents=True)
     env.write_text("PANEL_KEY=panel-secret\nOTHER_KEY=other-secret\n", encoding="utf-8")
 
-    app = ImladrisApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
+    app = MandosApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
     async with app.run_test(size=(120, 40)) as pilot:
         await _open_delete(app, pilot)
         delete_button = app.screen.query_one("#confirm-delete", Button)
@@ -151,11 +151,11 @@ async def test_delete_uses_env_file_secrets_without_process_env(tmp_path, monkey
     monkeypatch.delenv("OTHER_KEY", raising=False)
     config_path = tmp_path / "config.json"
     _write_json(config_path, _config_data())
-    env = tmp_path / ".imladris/.env"
+    env = tmp_path / ".mandos/.env"
     env.parent.mkdir(parents=True)
     env.write_text("PANEL_KEY=panel-secret\nOTHER_KEY=other-secret\n", encoding="utf-8")
 
-    app = ImladrisApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
+    app = MandosApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
     async with app.run_test(size=(120, 40)) as pilot:
         await _open_delete(app, pilot)
         await pilot.click("#confirm-delete")
@@ -178,11 +178,11 @@ async def test_delete_judge_clears_assignment_and_last_panel_delete_is_blocked(
     data = _config_data()
     data["providers"] = data["providers"][:3]
     _write_json(config_path, data)
-    env = tmp_path / ".imladris/.env"
+    env = tmp_path / ".mandos/.env"
     env.parent.mkdir(parents=True)
     env.write_text("PANEL_KEY=panel-secret\n", encoding="utf-8")
 
-    app = ImladrisApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
+    app = MandosApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
     async with app.run_test(size=(120, 40)) as pilot:
         await _open_delete(app, pilot, cursor_down=1)
         assert "judge" in _status(app, "#delete-warning")
@@ -205,11 +205,11 @@ async def test_reassign_judge_to_non_panel_member(tmp_path, monkeypatch):
     monkeypatch.setenv("OTHER_KEY", "other-secret")
     config_path = tmp_path / "config.json"
     _write_json(config_path, _config_data())
-    env = tmp_path / ".imladris/.env"
+    env = tmp_path / ".mandos/.env"
     env.parent.mkdir(parents=True)
     env.write_text("PANEL_KEY=panel-secret\nOTHER_KEY=other-secret\n", encoding="utf-8")
 
-    app = ImladrisApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
+    app = MandosApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
     async with app.run_test(size=(120, 40)) as pilot:
         await _open_roles(app, pilot)
         assert app.screen.query_one("#judge-select", Select).has_focus
@@ -239,14 +239,14 @@ async def test_reassign_roles_supports_member_ids_with_spaces(tmp_path, monkeypa
     monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
     config_path = tmp_path / "config.json"
     _write_json(config_path, _space_id_config_data())
-    env = tmp_path / ".imladris/.env"
+    env = tmp_path / ".mandos/.env"
     env.parent.mkdir(parents=True)
     env.write_text(
         "OPENROUTER_API_KEY=openrouter-secret\nDEEPSEEK_API_KEY=deepseek-secret\n",
         encoding="utf-8",
     )
 
-    app = ImladrisApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
+    app = MandosApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
     async with app.run_test(size=(140, 40)) as pilot:
         app.screen.action_reassign_roles()
         await pilot.pause()
@@ -272,11 +272,11 @@ async def test_roles_apply_uses_env_file_secrets_without_process_env(tmp_path, m
     monkeypatch.delenv("OTHER_KEY", raising=False)
     config_path = tmp_path / "config.json"
     _write_json(config_path, _config_data())
-    env = tmp_path / ".imladris/.env"
+    env = tmp_path / ".mandos/.env"
     env.parent.mkdir(parents=True)
     env.write_text("PANEL_KEY=panel-secret\nOTHER_KEY=other-secret\n", encoding="utf-8")
 
-    app = ImladrisApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
+    app = MandosApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
     async with app.run_test(size=(120, 40)) as pilot:
         await _open_roles(app, pilot)
         app.screen.query_one("#judge-select", Select).value = "candidate"
@@ -295,11 +295,11 @@ async def test_unchecking_last_panel_member_is_rejected(tmp_path, monkeypatch):
     data = _config_data()
     data["providers"] = data["providers"][:3]
     _write_json(config_path, data)
-    env = tmp_path / ".imladris/.env"
+    env = tmp_path / ".mandos/.env"
     env.parent.mkdir(parents=True)
     env.write_text("PANEL_KEY=panel-secret\n", encoding="utf-8")
 
-    app = ImladrisApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
+    app = MandosApp(config_path=config_path, home=tmp_path, harness_status=_harness_status())
     async with app.run_test(size=(120, 40)) as pilot:
         await _open_roles(app, pilot)
         app.screen.query_one("#panel-panel", Checkbox).value = False

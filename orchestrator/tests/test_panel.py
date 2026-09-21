@@ -11,7 +11,7 @@ from structlog.testing import capture_logs
 from orchestrator import sessions
 from orchestrator.fakes import FakeChatProvider
 from orchestrator.models import DeliberateRequest, FailureKind, TokenUsage
-from orchestrator.panel import run_deliberation
+from orchestrator.panel import failure_response, run_deliberation
 from orchestrator.settings import Price
 from orchestrator.tests.helpers import (
     ANALYSIS_JSON_IDS,
@@ -417,3 +417,124 @@ async def test_session_compaction_is_per_provider_and_budget_uses_messages(monke
     budget = {item["provider_id"]: item for item in resp.meta["budget"]}
     assert budget["a"]["estimated_tokens"] < budget["b"]["estimated_tokens"]
     assert budget["a"]["state"] != "unknown"
+
+
+async def test_meta_reports_which_judge_ran_and_what_it_cost(monkeypatch):
+    """The host must be able to tell a calibrated analysis from a fallback one."""
+    from orchestrator.fakes import FakeJevClient
+    from orchestrator.settings import JudgeConfig
+
+    jev = FakeJevClient(cost=0.0003)
+    monkeypatch.setattr("orchestrator.panel.build_jev_client", lambda judge, client: jev)
+    patch_providers(monkeypatch, all_ok_mapping())
+
+    config = make_config(judge=JudgeConfig(shape="matrix"))
+    resp = await run_deliberation(DeliberateRequest(prompt="q"), config)
+
+    assert resp.meta["judge_shape"] == "matrix"
+    assert resp.meta["judge_fallback_from"] is None
+    assert resp.meta["judge_provider"] == "typesafe"
+    assert resp.meta["jev_calls"] == 1
+    assert resp.meta["jev_questions"] == len(jev.calls[0]["questions"])
+    assert resp.meta["cost_basis"]["jev_usd"] == 0.0003
+    assert resp.meta["cost_estimate_usd"] >= 0.0003
+    assert resp.analysis.calibration.shape == "matrix"
+
+
+async def test_unpriced_jev_leaves_the_judge_cost_null_rather_than_zero(monkeypatch):
+    from orchestrator.fakes import FakeJevClient
+    from orchestrator.settings import JudgeConfig
+
+    monkeypatch.setattr(
+        "orchestrator.panel.build_jev_client", lambda judge, client: FakeJevClient(cost=None)
+    )
+    patch_providers(monkeypatch, all_ok_mapping())
+
+    resp = await run_deliberation(
+        DeliberateRequest(prompt="q"), make_config(judge=JudgeConfig(shape="matrix"))
+    )
+    assert resp.meta["cost_basis"]["jev_usd"] is None
+
+
+async def test_meta_records_the_fallback_when_jev_cannot_deliver(monkeypatch):
+    from orchestrator.fakes import FakeJevClient
+    from orchestrator.settings import JudgeConfig
+
+    monkeypatch.setattr(
+        "orchestrator.panel.build_jev_client",
+        lambda judge, client: FakeJevClient(error="HTTP 503: upstream"),
+    )
+    patch_providers(monkeypatch, all_ok_mapping())
+
+    resp = await run_deliberation(
+        DeliberateRequest(prompt="q"), make_config(judge=JudgeConfig(shape="matrix"))
+    )
+    assert resp.meta["judge_shape"] == "llm"
+    assert resp.meta["judge_fallback_from"] == "matrix"
+    assert "503" in resp.meta["judge_error"]
+    assert resp.analysis.consensus == ["agree on X"]
+
+
+async def test_the_judge_is_sent_the_same_context_the_panel_was(monkeypatch):
+    mapping = all_ok_mapping()
+    patch_providers(monkeypatch, mapping)
+
+    await run_deliberation(
+        DeliberateRequest(prompt="q", context="shared background"), make_config()
+    )
+    judge_request = mapping["ja"].requests[0]
+    assert "shared background" in judge_request.user
+
+
+async def test_rendered_markdown_carries_the_numbers_behind_each_finding(monkeypatch):
+    from orchestrator.fakes import FakeJevClient
+    from orchestrator.jev import qname
+    from orchestrator.settings import JudgeConfig
+
+    extraction = json.dumps({"claims": ["everyone agrees"], "blind_spots": []})
+    script = {
+        qname("support", 0, "a"): {"noul": 0.91},
+        qname("support", 0, "b"): {"noul": 0.88},
+        qname("contested", 0): {"noul": 0.05},
+        qname("standing", 0): {"score": 1.8},
+    }
+    monkeypatch.setattr(
+        "orchestrator.panel.build_jev_client", lambda judge, client: FakeJevClient(script)
+    )
+    patch_providers(monkeypatch, all_ok_mapping(analysis_text=extraction))
+
+    resp = await run_deliberation(
+        DeliberateRequest(prompt="q"), make_config(judge=JudgeConfig(shape="hybrid"))
+    )
+    assert "*Judge: hybrid.*" in resp.text
+    assert "- everyone agrees _(support 0.88-0.91; contested 0.05; standing 1.80/2)_" in resp.text
+
+
+async def test_every_branch_carries_the_jev_cost_key(monkeypatch):
+    """`cost_basis.jev_usd` must be readable unconditionally, and must stay null when
+    nothing priced the judging — null and 0.0 are different answers."""
+    from orchestrator.fakes import FakeJevClient
+    from orchestrator.settings import JudgeConfig
+
+    capped = failure_response("q", failure="fusion_invocation_capped", error="e")
+    assert capped.meta["cost_basis"]["jev_usd"] is None
+
+    patch_providers(
+        monkeypatch,
+        {
+            "a": FakeChatProvider("a", error="HTTP 500: down"),
+            "b": FakeChatProvider("b", error="HTTP 500: down"),
+            "ja": FakeChatProvider("ja", text=ANALYSIS_JSON_IDS),
+        },
+    )
+    all_failed = await run_deliberation(DeliberateRequest(prompt="q"), make_config())
+    assert all_failed.meta["cost_basis"]["jev_usd"] is None
+
+    monkeypatch.setattr(
+        "orchestrator.panel.build_jev_client", lambda judge, client: FakeJevClient(cost=0.0002)
+    )
+    patch_providers(monkeypatch, all_ok_mapping())
+    ok = await run_deliberation(
+        DeliberateRequest(prompt="q"), make_config(judge=JudgeConfig(shape="matrix"))
+    )
+    assert ok.meta["cost_basis"]["jev_usd"] == 0.0002

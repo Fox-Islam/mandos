@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-
 from orchestrator.json_utils import parse_lenient
-from orchestrator.models import Analysis, ChatRequest, RawAnswer, TokenUsage
+from orchestrator.judge.outcome import JudgeOutcome
+from orchestrator.models import Analysis, ChatRequest, RawAnswer
 
 ANALYSIS_SYSTEM = (
     "You are a deliberation judge. ANALYSE the panel answers; do not curate, merge, "
@@ -21,14 +20,6 @@ ANALYSIS_SYSTEM = (
 )
 
 
-@dataclass
-class JudgeOutcome:
-    analysis: Analysis | None = None
-    analysis_error: str | None = None
-    usages: list[tuple[str, TokenUsage]] = field(default_factory=list)
-    analysis_text: str = ""
-
-
 def render_answers(answers: list[RawAnswer]) -> str:
     parts = ["ANSWERS:"]
     for answer in answers:
@@ -36,10 +27,17 @@ def render_answers(answers: list[RawAnswer]) -> str:
     return "\n".join(parts)
 
 
-def build_judge_user(question: str, answers: list[RawAnswer]) -> str:
+def build_judge_user(question: str, answers: list[RawAnswer], context: str | None = None) -> str:
     """The judge's user-message content. Single source of truth so the advisory cost
-    estimate counts exactly what the judge is sent (the question plus the answers)."""
-    return f"QUESTION:\n{question}\n\n{render_answers(answers)}"
+    estimate counts exactly what the judge is sent.
+
+    ``context`` is included because the panel saw it: a judge asked to weigh answers
+    to a question it has only half been shown will score coverage against the wrong
+    question."""
+    head = f"QUESTION:\n{question}"
+    if context:
+        head += f"\n\nCONTEXT:\n{context}"
+    return f"{head}\n\n{render_answers(answers)}"
 
 
 async def run_deliberation_judge(
@@ -49,6 +47,7 @@ async def run_deliberation_judge(
     *,
     deadline: float,
     max_tokens: int | None = None,
+    context: str | None = None,
 ) -> JudgeOutcome:
     """Run the analysis judge at temperature 0.
 
@@ -61,7 +60,7 @@ async def run_deliberation_judge(
     exhausted, so a near-expired deadline degrades to ``meta.judge_error`` +
     ``analysis=None`` rather than running unbounded.
     """
-    outcome = JudgeOutcome()
+    outcome = JudgeOutcome(shape="llm")
     if not answers:
         outcome.analysis_error = "no successful panel answers to analyse"
         return outcome
@@ -73,7 +72,7 @@ async def run_deliberation_judge(
     analysis_result = await analysis_provider.complete(
         ChatRequest(
             system=ANALYSIS_SYSTEM,
-            user=build_judge_user(question, answers),
+            user=build_judge_user(question, answers, context),
             max_tokens=max_tokens,
             temperature=0,
         ),

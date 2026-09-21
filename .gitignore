@@ -3,11 +3,11 @@
 !.env.example
 !.env.production.example
 
-imladris.yaml
-imladris.local.yaml
-config/imladris.yaml
+mandos.yaml
+mandos.local.yaml
+config/mandos.yaml
 config/*.local.yaml
-.imladris/
+.mandos/
 *.key
 *.pem
 
