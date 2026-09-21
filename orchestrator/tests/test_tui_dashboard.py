@@ -234,7 +234,7 @@ async def test_dashboard_text_round_trips_through_utf8(tmp_path, monkeypatch):
     for text in texts:
         assert text.encode("utf-8").decode("utf-8") == text
 
-    assert "Fëanor's Code" in brand
+    assert "✦ Council Configurator ✦" in brand
 
 
 @pytest.mark.asyncio
@@ -418,11 +418,9 @@ async def test_dashboard_branding_and_responsive_layout(tmp_path, monkeypatch):
         small_body = small.screen.query_one("#dashboard-body", Horizontal)
 
         assert "Council Configurator" in small_header
-        assert "Fëanor's Code" in small_header
-        assert "O(log n)" in small_header
         assert "◆" in small_header
-        assert len(small_header.splitlines()) == 8
-        assert small_brand.region.height == 8
+        assert len(small_header.splitlines()) == 7
+        assert small_brand.region.height == 7
         assert small_body.region.y > small_brand.region.y
         assert "..." in small_roster
         assert "Quit" in _action_labels(small)
@@ -434,11 +432,7 @@ async def test_dashboard_branding_and_responsive_layout(tmp_path, monkeypatch):
         outer_title = str(roomy.screen.query_one("#dashboard").border_title)
 
         assert "Council Configurator" in roomy_header
-        assert "Fëanor's Code" in roomy_header
-        assert "O(log n)" in roomy_header
-        assert "╔" + "═" * 24 + "╗" in roomy_header
-        assert "╔" + "═" * 18 + "╗" in roomy_header
-        assert len(roomy_header.splitlines()) == 11
+        assert len(roomy_header.splitlines()) == 7
         assert "mandos" in outer_title
         assert "Wire harnesses" in _action_labels(roomy)
 

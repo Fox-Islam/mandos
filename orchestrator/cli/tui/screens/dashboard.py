@@ -22,8 +22,6 @@ from orchestrator.model_catalog import (
 
 BRAND_TITLE = "mandos"
 BRAND_SUBTITLE = "Council Configurator"
-BRAND_LEFT_MARK = "Fëanor's Code"
-BRAND_RIGHT_MARK = "O(log n)"
 
 NODE = "◆"
 ACCENT = "✦"
@@ -136,11 +134,6 @@ class DashboardScreen(Screen[None]):
         offset = max(0, (inner - word_width) // 2)
         lines = [(" " * offset) + line for line in WORDMARK]
         lines.append(f"{ACCENT} {BRAND_SUBTITLE} {ACCENT}".center(inner))
-        if width < 86:
-            lines.append(self._inline_marks().center(inner))
-        else:
-            lines.append("")
-            lines.extend(self._mark_boxes(inner))
         lines.append(self._divider(inner))
         return "\n".join(lines)
 
@@ -149,28 +142,9 @@ class DashboardScreen(Screen[None]):
             [
                 BRAND_TITLE.center(inner),
                 f"{ACCENT} {BRAND_SUBTITLE} {ACCENT}".center(inner),
-                self._inline_marks().center(inner),
                 self._divider(inner),
             ]
         )
-
-    def _inline_marks(self) -> str:
-        left = f"{NODE} {BRAND_LEFT_MARK} {NODE}"
-        right = f"{NODE} {BRAND_RIGHT_MARK} {NODE}"
-        return f"{left}     {right}"
-
-    def _mark_boxes(self, inner: int) -> list[str]:
-        left = self._mark_box(BRAND_LEFT_MARK, 26)
-        right = self._mark_box(BRAND_RIGHT_MARK, 20)
-        gap = 8
-        return [
-            f"{lhs}{' ' * gap}{rhs}".center(inner) for lhs, rhs in zip(left, right, strict=True)
-        ]
-
-    def _mark_box(self, label: str, width: int) -> tuple[str, str, str]:
-        inner_width = max(0, width - 2)
-        bar = "═" * inner_width
-        return (f"╔{bar}╗", f"║{label.center(inner_width)}║", f"╚{bar}╝")
 
     def _divider(self, inner: int) -> str:
         span = max(0, inner - 3)
@@ -267,7 +241,7 @@ class DashboardScreen(Screen[None]):
         )
 
     def _judge_summary(self, draft: Draft, width: int) -> str:
-        """Name the judge that will actually decide.
+        """Name the judge that decides.
 
         For a Jev shape the analyst is a supporting act (or absent), so leading with
         the chat provider would misreport what is doing the judging.
