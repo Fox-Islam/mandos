@@ -30,13 +30,15 @@ class DefaultsScreen(DraftCommitMixin, ArrowNavigationMixin, Screen[None]):
             yield Static("Default preset", classes="field-label")
             yield Select([("(none)", NONE_VALUE)], allow_blank=False, id="preset-select")
             yield Static("Max output tokens", classes="field-label")
-            yield Input(id="max-tokens", type="integer")
+            yield Input(placeholder="4096 per panel member", id="max-tokens", type="integer")
             yield Static("Timeout seconds", classes="field-label")
-            yield Input(id="timeout-s", type="number")
+            yield Input(placeholder="90 for the whole deliberation", id="timeout-s", type="number")
             yield Static("Temperature", classes="field-label")
-            yield Input(id="temperature", type="number")
+            yield Input(
+                placeholder="0.2 (the judge always runs at 0)", id="temperature", type="number"
+            )
             yield Static("Max recursion depth", classes="field-label")
-            yield Input(id="max-depth", type="integer")
+            yield Input(placeholder="3 evidence passes", id="max-depth", type="integer")
             with Horizontal(classes="form-row"):
                 yield Button("Apply", variant="primary", id="apply-defaults")
                 yield Button("Cancel", id="cancel-defaults")

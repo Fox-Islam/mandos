@@ -76,7 +76,9 @@ class MemberFormScreen(DraftCommitMixin, ArrowNavigationMixin, Screen[None]):
                 )
                 yield Input(placeholder="search all presets", id="preset-search")
             yield Static("id", classes="field-label")
-            yield Input(id="member-id")
+            yield Input(
+                placeholder="short name you will use in presets, e.g. gemini", id="member-id"
+            )
             yield Static("kind", classes="field-label")
             yield Select(
                 [("openai", "openai"), ("openrouter", "openrouter")],
@@ -85,11 +87,18 @@ class MemberFormScreen(DraftCommitMixin, ArrowNavigationMixin, Screen[None]):
                 id="kind",
             )
             yield Static("base_url", classes="field-label")
-            yield Input(id="base-url")
+            yield Input(placeholder="https://openrouter.ai/api/v1", id="base-url")
             yield Static("api_key_env", classes="field-label")
-            yield Input(id="api-key-env")
+            yield Input(
+                placeholder="name of the env var holding the key, e.g. OPENROUTER_API_KEY",
+                id="api-key-env",
+            )
             yield Static("token", classes="field-label")
-            yield Input(password=True, id="token")
+            yield Input(
+                password=True,
+                placeholder="paste to store in ~/.mandos/.env; blank keeps the current one",
+                id="token",
+            )
             yield Static("model", classes="field-label")
             with Horizontal(classes="form-row"):
                 yield Select(
@@ -98,13 +107,13 @@ class MemberFormScreen(DraftCommitMixin, ArrowNavigationMixin, Screen[None]):
                     id="model-select",
                     disabled=True,
                 )
-                yield Input(id="model-input")
+                yield Input(placeholder="or type a model id", id="model-input")
                 yield Button("Fetch models", id="fetch-models")
             yield Static("headers", classes="field-label")
             yield Input(placeholder='{"Header-Name":"value"}', id="headers")
             with Horizontal(classes="form-row"):
                 yield Static("context_window", classes="field-label")
-                yield Input(placeholder="optional", id="context-window", type="integer")
+                yield Input(placeholder="from the catalog", id="context-window", type="integer")
                 yield Static("timeout_s", classes="field-label")
                 yield Input("60", id="timeout-s", type="number")
                 yield Static("max_retries", classes="field-label")

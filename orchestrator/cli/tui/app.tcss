@@ -262,12 +262,24 @@ Button:focus {
     border: round #F2914B;
     text-style: bold;
 }
+/* Every button keeps the same outlined shape. A filled primary sat beside an
+   outlined Cancel looking like a different kind of control; emphasis is carried by
+   colour and weight instead. */
 Button.-primary {
-    background: #5C3920;
+    background: #141210;
     color: #F2914B;
-}
-Button.-primary:focus {
     border: round #F2914B;
+    text-style: bold;
+}
+Button.-error {
+    background: #141210;
+    color: #C4462F;
+    border: round #C4462F;
+    text-style: bold;
+}
+Button.-primary:focus,
+Button.-error:focus {
+    text-style: bold reverse;
 }
 
 /* No border: a tall one puts two blank rows around every entry, where the action

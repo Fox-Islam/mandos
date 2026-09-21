@@ -49,15 +49,17 @@ class JudgeScreen(DraftCommitMixin, ArrowNavigationMixin, Screen[None]):
                 id="judge-provider",
             )
             yield Static("Jev model", classes="field-label")
-            yield Input(id="judge-model")
+            yield Input(placeholder="jev-latest", id="judge-model")
             yield Static("Endpoint override (blank = the provider's own)", classes="field-label")
-            yield Input(id="judge-base-url")
+            yield Input(
+                placeholder="https://jev.internal for a self-hosted endpoint", id="judge-base-url"
+            )
             yield Static("Jev API key (blank keeps the stored one)", classes="field-label")
-            yield Input(password=True, id="judge-token")
+            yield Input(password=True, placeholder="blank keeps the stored key", id="judge-token")
             yield Static("Timeout seconds", classes="field-label")
-            yield Input(id="judge-timeout", type="number")
+            yield Input(placeholder="30", id="judge-timeout", type="number")
             yield Static("Questions per call", classes="field-label")
-            yield Input(id="judge-batch", type="integer")
+            yield Input(placeholder="60 questions per Jev call", id="judge-batch", type="integer")
             with Horizontal(classes="form-row"):
                 yield Button("Apply", variant="primary", id="apply-judge")
                 yield Button("Cancel", id="cancel-judge")

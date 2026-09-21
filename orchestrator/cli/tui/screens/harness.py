@@ -36,7 +36,11 @@ class HarnessScreen(ArrowNavigationMixin, Screen[None]):
             yield Checkbox("opencode", id="harness-opencode")
             # Codex-only, so it follows the roster instead of splitting it.
             yield Static("Codex tool output token limit", classes="field-label")
-            yield Input(id="codex-output-limit", type="integer")
+            yield Input(
+                placeholder="raise it so a council reply is not truncated, e.g. 32000",
+                id="codex-output-limit",
+                type="integer",
+            )
             with Horizontal(classes="form-row"):
                 yield Button("Apply", variant="primary", id="apply-harnesses")
                 yield Button("Cancel", id="cancel-harnesses")
