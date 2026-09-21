@@ -1,14 +1,14 @@
-"""The deliberation judge, in four shapes.
+"""The deliberation judge, in five shapes.
 
-Three of them put the judging to **Jev**, TypeSafe's System One decision model, which
+Four of them put the judging to **Jev**, TypeSafe's System One decision model, which
 answers named questions with calibrated probabilities instead of writing prose. The
-fourth is the generative analyst this project started from, kept as the fallback.
+fifth is the generative analyst this project started from, kept as the fallback.
 
 ``hybrid``
     An LLM proposes claims, Jev decides them. The full narrative schema, with every
     finding carrying the numbers it was derived from.
 ``matrix``
-    Jev alone. Pairwise agreement, per-answer rubrics and an outlier — no prose, and
+    Jev alone. Pairwise agreement, per-answer rubrics and an outlier - no prose, and
     no generative model anywhere in the loop.
 ``verify``
     The generative analyst writes, then Jev grades what it wrote. Every finding keeps
@@ -17,19 +17,19 @@ fourth is the generative analyst this project started from, kept as the fallback
     No deliberation at all. One cheap generative call lists what the answers did not
     have, Jev scores each for whether it was genuinely missing and whether having it
     would change the answer, and nothing else is measured. The shape to use with a
-    panel of one, or whenever the question turns on a missing fact rather than on a
+    panel of one, or whenever the question turns on a missing fact instead of on a
     disagreement.
 ``llm``
     The generative analyst alone. Fusion-style analysis, uncalibrated.
 
 Whatever shape runs, the rules from the pipeline's golden rules hold: the judge
-analyses and never authors, a failure is recorded rather than raised, and the raw panel
+analyses and never authors, a failure is recorded, not raised, and the raw panel
 answers come back regardless so the host can always write the final answer.
 
 **Degradation.** Each shape has an ordered fallback chain, tried until one produces an
 analysis; ``fallback_from`` records what was asked for. ``hybrid`` falls to ``matrix``
-before ``llm``, because most of what stops it — an analyst that is unreachable, or that
-proposed nothing to adjudicate because the panel agreed — says nothing about whether
+before ``llm``, because most of what stops it - an analyst that is unreachable, or that
+proposed nothing to adjudicate because the panel agreed - says nothing about whether
 Jev is reachable, and dropping straight to a generative judge throws away the
 calibration for no reason. Only when nothing in the chain delivers does the analysis
 come back ``None``.
@@ -58,7 +58,7 @@ from orchestrator.judge.llm import (
 from orchestrator.judge.outcome import JudgeOutcome
 from orchestrator.models import JudgeShape, RawAnswer
 
-# Ordered fallbacks per shape. ``hybrid`` keeps its footing inside Jev first: an
+# Ordered fallbacks per shape. ``hybrid`` stays inside Jev first: an
 # extraction that proposed nothing is a statement about the analyst, not about Jev.
 FALLBACKS: dict[JudgeShape, tuple[JudgeShape, ...]] = {
     "hybrid": ("matrix", "llm"),
@@ -127,6 +127,7 @@ async def run_judge(
         if outcome.analysis is not None:
             # ``verify`` reaching here with an error means the analyst's findings stand
             # but were never graded, which is the ``llm`` shape by another name.
+            outcome.stamp_calibration()
             if error and attempt == "verify":
                 outcome.shape, outcome.fallback_from = "llm", shape
                 outcome.analysis_error = "; ".join(errors)

@@ -1,6 +1,6 @@
 """What every judge shape returns, whatever it is made of.
 
-One dataclass for all four shapes so ``panel.py`` never branches on which judge ran:
+One dataclass for all five shapes so ``panel.py`` never branches on which judge ran:
 it reads ``analysis``, records ``analysis_error`` if set, and bills the calls.
 """
 
@@ -33,6 +33,17 @@ class JudgeOutcome:
     jev_questions: int = 0
     jev_cost: float | None = None
     jev_usage: TokenUsage = field(default_factory=TokenUsage)
+
+    def stamp_calibration(self) -> None:
+        """Record on the calibration block how much Jev work produced it.
+
+        The shapes assemble their ``Calibration`` without the outcome in scope, so the
+        two counters it declares are filled in here, once, for whichever shape won.
+        """
+        calibration = getattr(self.analysis, "calibration", None)
+        if calibration is not None:
+            calibration.questions_asked = self.jev_questions
+            calibration.calls = self.jev_calls
 
     def absorb_jev(self, result) -> None:
         """Roll one :class:`~orchestrator.jev.JevResult` into the running totals."""

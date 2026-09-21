@@ -1,9 +1,9 @@
 """The four judge shapes: what each derives, and how each degrades.
 
 Every Jev call here is a deterministic fake. The assertions are about the judge's
-reasoning from probabilities — that a claim two models back and one denies becomes a
-contradiction rather than a consensus — not about Jev's own accuracy, which is
-measured in ``local/`` against the live API rather than in the suite.
+reasoning from probabilities - that a claim two models back and one denies becomes a
+contradiction instead of a consensus - not about Jev's own accuracy, which is
+measured in ``local/`` against the live API instead of in the suite.
 """
 
 from __future__ import annotations
@@ -295,7 +295,7 @@ async def test_jev_spend_and_call_counts_are_recorded():
 
 async def test_a_contested_claim_survives_a_backer_sitting_on_the_threshold():
     """A minority position scoring just under SUPPORT_HIGH must still be reported as a
-    contradiction rather than falling through to `unsupported`.
+    contradiction instead of falling through to `unsupported`.
 
     Measured against the live API: the lone model recommending a contested option
     scored 0.59-0.60 across repeats while the other three sat at 0.02, so splitting a
@@ -400,7 +400,7 @@ async def test_nothing_missing_means_no_evidence_block():
 
 
 async def test_matrix_notices_an_answer_that_says_it_is_working_blind():
-    """`matrix` cannot name what is missing — that needs a generative pass — but it can
+    """`matrix` cannot name what is missing - that needs a generative pass - but it can
     report that the panel said something was."""
     jev = FakeJevClient({qname("gap", "a"): {"noul": 0.92}, qname("gap", "b"): {"noul": 0.05}})
     outcome = await _run("matrix", jev)
@@ -411,7 +411,7 @@ async def test_matrix_notices_an_answer_that_says_it_is_working_blind():
 
 
 async def test_the_generative_judge_reports_gaps_too():
-    """Asserted rather than measured, so `lacked` stays null — but a caller can still
+    """Asserted instead of measured, so `lacked` stays null - but a caller can still
     act on it, and the missing number says which kind of claim it is."""
     analysis_json = json.dumps(
         {
@@ -437,7 +437,7 @@ async def test_one_failed_jev_call_does_not_write_off_the_next_one():
     """A shape that needs Jev is still tried after another Jev shape failed.
 
     `matrix` asks a much smaller batch than `hybrid`, so it is a real recovery path
-    when Jev has just refused a wide one -- a transient 529 under load is not evidence
+    when Jev has just refused a wide one - a transient 529 under load is not evidence
     that the endpoint is gone. The chain does not branch on which provider failed.
     """
     calls: list[int] = []
@@ -537,3 +537,24 @@ async def test_probe_does_not_fall_back_to_a_shape_that_deliberates():
     assert outcome.analysis is None
     assert outcome.shape == "probe"
     assert outcome.fallback_from is None
+
+
+@pytest.mark.asyncio
+async def test_calibration_reports_the_jev_work_that_produced_it():
+    """``questions_asked``/``calls`` are in the documented response shape, and were
+    declared but never assigned, so every analysis reported 0 for both."""
+    answers = [
+        RawAnswer(id="a", model="m", answer="Split the monolith."),
+        RawAnswer(id="b", model="m", answer="Fix the test suite first."),
+    ]
+    outcome = await run_judge(
+        "monolith or services?",
+        answers,
+        shape="matrix",
+        jev_client=FakeJevClient(),
+        analysis_provider=None,
+        deadline=time.monotonic() + 30,
+    )
+    calibration = outcome.analysis.calibration
+    assert calibration.calls == outcome.jev_calls == 1
+    assert calibration.questions_asked == outcome.jev_questions > 0
