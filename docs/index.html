@@ -72,9 +72,35 @@
   router</a> showed that a panel of models with an analysis stage beats the frontier
   models it is built from, and
   <a href="https://openrouter.ai/docs/guides/routing/routers/fusion-router">documents
-  how</a>. Mandos runs that shape as a local MCP server and replaces the analysis stage
-  with a model that returns numbers instead of prose.</p>
+  how</a>. Mandos runs that shape as a local MCP server and changes the analysis stage:
+  the judge is <a href="https://typesafe.ai/blog/introducing-system-one-models-and-jev">Jev</a>,
+  which returns calibrated probabilities rather than prose.</p>
 </header>
+
+<h2>Quick start</h2>
+
+<p>Install. The script bootstraps <a href="https://docs.astral.sh/uv/">uv</a>, resolves
+Python 3.13, and needs no checkout:</p>
+
+<pre><code># macOS / Linux
+curl -fsSL https://raw.githubusercontent.com/Fox-Islam/mandos/main/scripts/install.sh | sh
+
+# Windows
+irm https://raw.githubusercontent.com/Fox-Islam/mandos/main/scripts/install.ps1 | iex</code></pre>
+
+<p>Configure. This opens the configurator, where you add panel members, set the judge,
+and wire your harness:</p>
+
+<pre><code>mandos</code></pre>
+
+<p>Then use it. In Claude Code, Codex or OpenCode:</p>
+
+<pre><code>/council Should we move the job queue off Postgres LISTEN/NOTIFY?</code></pre>
+
+<p>Your model calls the <code>mandos</code> tool, the panel answers, the judge scores
+what they established, and your model writes the answer. You need a key for the judge
+and one per panel provider; <code>mandos doctor</code> shows what is configured without
+printing secrets.</p>
 
 <h2>How it works</h2>
 
@@ -94,27 +120,19 @@ query plan that none of the models had, that comes back as a ranked list, each i
 scored for how likely it is to change the answer. The calling model fetches what it can
 reach and asks again.</p>
 
-<h2>Install</h2>
+<h2>Setup notes</h2>
 
-<pre><code># macOS / Linux
-curl -fsSL https://raw.githubusercontent.com/Fox-Islam/mandos/main/scripts/install.sh | sh
-
-# Windows
-irm https://raw.githubusercontent.com/Fox-Islam/mandos/main/scripts/install.ps1 | iex</code></pre>
-
-<p>The script installs <code>uv</code> if absent, resolves Python 3.13, and puts two
-commands on your PATH: <code>mandos</code> (the configurator) and <code>mandos-mcp</code>
-(the stdio server your harness spawns). Then:</p>
-
-<pre><code>mandos</code></pre>
-
-<p>The configurator sets up your panel, picks the judge, writes
-<code>~/.mandos/config.json</code> and <code>~/.mandos/.env</code> (0600), and wires
-Claude Code, Codex or OpenCode. Invoke it with <code>/council</code>.</p>
+<p>The installer puts two commands on your PATH: <code>mandos</code>, the configurator,
+and <code>mandos-mcp</code>, the stdio server your harness spawns. The configurator
+writes <code>~/.mandos/config.json</code> and <code>~/.mandos/.env</code> at mode 0600.</p>
 
 <p>Any OpenAI-compatible endpoint works as a panel member, so vLLM, Ollama and
 LM Studio need no special handling. <code>mandos doctor</code> labels each provider
 on-prem or off-prem so you can see what leaves the machine.</p>
+
+<p>Jev is served by TypeSafe directly and through OpenRouter's decisions endpoint. The
+request and answer bodies are the same on both, so <code>judge.provider</code> decides
+only the host and which environment variable holds the key.</p>
 
 <h2>Benchmark</h2>
 

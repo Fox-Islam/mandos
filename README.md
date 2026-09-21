@@ -1,23 +1,116 @@
 # Mandos
 
-A multi-model deliberation MCP server whose **judge does not write prose**.
+A multi-model deliberation MCP server. A panel of models answers your question, a
+calibrated decision model judges what they established, and your own model writes the
+answer from the evidence and the numbers.
 
 The approach is OpenRouter's. Their [Fusion
 router](https://openrouter.ai/blog/announcements/fusion-beats-frontier/) showed that a
 panel of models with an analysis stage beats the frontier models it is built from, and
 [documents how](https://openrouter.ai/docs/guides/routing/routers/fusion-router).
-Mandos runs that shape as a local MCP server and changes the analysis stage.
+Mandos runs that shape as a local MCP server and changes the analysis stage: the judge
+is [Jev](https://typesafe.ai/blog/introducing-system-one-models-and-jev), which returns
+calibrated probabilities rather than prose.
 
-A panel of independent models answers your question in parallel. Then
-[**Jev**](https://typesafe.ai/blog/introducing-system-one-models-and-jev) — TypeSafe's
-System One decision model — is asked, claim by claim and model by model, what the panel
-actually established: *does this answer support this claim? do these two reach the
-same conclusion? is this disagreement real, or two models phrasing one position
-differently?* Every answer comes back as a calibrated probability. Your harness's own
-model then writes the final answer from the panel's evidence and Jev's numbers.
+Measured over 16 questions, a panel reached 15/16 and 16/16 where the same model alone
+reached 13/16 and 11/16. [Full benchmark, with caveats](https://fox-islam.github.io/mandos/).
 
-The difference from a generative judge is the difference between being told there is
-consensus and being shown that the weakest supporter scored 0.51.
+## Quick start
+
+Install. The script bootstraps [`uv`](https://docs.astral.sh/uv/), resolves Python
+3.13, and needs no checkout:
+
+```bash
+# macOS / Linux
+curl -fsSL https://raw.githubusercontent.com/Fox-Islam/mandos/main/scripts/install.sh | sh
+```
+
+```powershell
+# Windows
+irm https://raw.githubusercontent.com/Fox-Islam/mandos/main/scripts/install.ps1 | iex
+```
+
+Configure. This opens the full-screen configurator, where you add panel members, set
+the judge, and wire your harness:
+
+```bash
+mandos
+```
+
+![Mandos TUI dashboard](docs/images/tui-dashboard.svg)
+
+Then use it. In Claude Code, Codex or OpenCode:
+
+```
+/council Should we move the job queue off Postgres LISTEN/NOTIFY?
+```
+
+Your model calls the `mandos` tool, the panel answers, the judge scores what they
+established, and your model writes the answer. `mandos doctor` shows the resolved
+roster and what is wired, without printing secrets.
+
+You need one key for the judge and one per panel provider. See [Getting a Jev
+key](#getting-a-jev-key) and [Configuration](#configuration).
+
+## Install in detail
+
+Each script installs `uv` if absent, resolves or installs Python 3.13, removes any
+previous `mandos` uv tool environment, reinstalls with the resolved interpreter, and
+verifies `mandos --help` before finishing. That puts two commands on your PATH:
+`mandos` (the configurator TUI) and `mandos-mcp` (the MCP stdio server your harness
+spawns). Until a PyPI release exists this git-URL install needs `git` on PATH; the
+installer checks up front.
+
+The configurator writes `~/.mandos/config.json` and `~/.mandos/.env` (0600), and wires
+the harnesses you pick. `mandos refresh-catalog` updates the local models.dev cache.
+Sessions live in `~/.mandos/sessions/`; clear them with `mandos clear-sessions
+[thread_id]` or the `mandos_clear_sessions` tool.
+
+## Getting a Jev key
+
+Jev is served by TypeSafe directly and through OpenRouter's decisions endpoint. The
+request and answer bodies are identical; the provider only decides the host, the path
+and which variable holds the key.
+
+| | TypeSafe | OpenRouter |
+|---|---|---|
+| Host / path | `api.typesafe.ai` `/v1/systemone` | `openrouter.ai` `/api/alpha/decisions` |
+| Key | `TYPESAFE_API_KEY` | `OPENROUTER_API_KEY` |
+| Per-call cost reported | no | yes, folded into `meta.cost_basis.jev_usd` |
+
+Set `judge.provider` and leave `judge.api_key_env` unset to let the key follow the
+provider. `judge.base_url` overrides the host for a self-hosted or proxied endpoint.
+
+## Letting the panel see the conversation
+
+An MCP server sees only its tool arguments, so by default the panel is briefed on
+whatever your model retyped into `prompt` and `context`. The optional capture hook
+fixes that from the harness side: on each user prompt it writes the recent turns to
+`~/.mandos/context/` and exits — no API call, nothing blocking, no classifier deciding
+whether a turn "needs" a council. When your model chooses to convene one, the server
+reads that file.
+
+```bash
+mkdir -p ~/.mandos/hooks
+cp scripts/hooks/capture_transcript.py ~/.mandos/hooks/
+```
+
+```json
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {"hooks": [{"type": "command",
+                  "command": "python3 ~/.mandos/hooks/capture_transcript.py"}]}
+    ]
+  }
+}
+```
+
+Credentials are stripped before anything is written, the capture is bounded by turns
+and characters, and one older than an hour is ignored as belonging to a different task.
+`context.from_transcript: false` disables it; `use_conversation: false` blinds a single
+call. If your panel is off-prem, so is the conversation — see
+[`docs/architecture/05-security.md`](docs/architecture/05-security.md).
 
 ## Why a decision model judges better than a chat model
 
@@ -113,93 +206,6 @@ The judge closes the loop on that: `analysis.needs_evidence` reports what the pa
 found itself lacking, with how likely having it would change the answer. Rather than
 guessing what to include up front, the calling model reads what the panel actually
 needed, fetches it, and asks again.
-
-## Install
-
-Bootstrap [`uv`](https://docs.astral.sh/uv/) and install the `mandos` console tool
-with one command. No checkout needed:
-
-```bash
-# macOS / Linux
-curl -fsSL https://raw.githubusercontent.com/Fox-Islam/mandos/main/scripts/install.sh | sh
-```
-
-```powershell
-# Windows
-irm https://raw.githubusercontent.com/Fox-Islam/mandos/main/scripts/install.ps1 | iex
-```
-
-Each script installs `uv` if absent, resolves or installs Python 3.13, removes any
-previous `mandos` uv tool environment, reinstalls with the resolved interpreter, and
-verifies `mandos --help` before finishing. That puts two commands on your PATH:
-`mandos` (the configurator TUI) and `mandos-mcp` (the MCP stdio server your harness
-spawns). Until a PyPI release exists this git-URL install needs `git` on PATH; the
-installer checks up front.
-
-Then configure:
-
-```bash
-mandos
-```
-
-![Mandos TUI dashboard](docs/images/tui-dashboard.svg)
-
-The configurator loads the current config, shows the council roster, lets you
-add/edit/delete members, sets the **judge** (shape, Jev provider, model, key), writes
-`~/.mandos/config.json` + `~/.mandos/.env` (0600), and wires the harnesses you pick
-(Claude Code / Codex / OpenCode). After that, invoke `/council`, `/council-session`,
-or the `mandos` tool from your harness.
-
-`mandos doctor` prints the resolved roster, the judge, and the wired harnesses — no
-secrets. `mandos refresh-catalog` updates the local models.dev cache. Sessions live
-in `~/.mandos/sessions/`; clear them with `mandos clear-sessions [thread_id]` or the
-`mandos_clear_sessions` tool.
-
-## Letting the panel see the conversation
-
-An MCP server sees only its tool arguments, so by default the panel is briefed on
-whatever your model retyped into `prompt` and `context`. The optional capture hook
-fixes that from the harness side: on each user prompt it writes the recent turns to
-`~/.mandos/context/` and exits — no API call, nothing blocking, no classifier deciding
-whether a turn "needs" a council. When your model chooses to convene one, the server
-reads that file.
-
-```bash
-mkdir -p ~/.mandos/hooks
-cp scripts/hooks/capture_transcript.py ~/.mandos/hooks/
-```
-
-```json
-{
-  "hooks": {
-    "UserPromptSubmit": [
-      {"hooks": [{"type": "command",
-                  "command": "python3 ~/.mandos/hooks/capture_transcript.py"}]}
-    ]
-  }
-}
-```
-
-Credentials are stripped before anything is written, the capture is bounded by turns
-and characters, and one older than an hour is ignored as belonging to a different task.
-`context.from_transcript: false` disables it; `use_conversation: false` blinds a single
-call. If your panel is off-prem, so is the conversation — see
-[`docs/architecture/05-security.md`](docs/architecture/05-security.md).
-
-## Getting a Jev key
-
-Jev is served by TypeSafe directly and through OpenRouter's decisions endpoint. The
-request and answer bodies are identical; the provider only decides the host, the path
-and which variable holds the key.
-
-| | TypeSafe | OpenRouter |
-|---|---|---|
-| Host / path | `api.typesafe.ai` `/v1/systemone` | `openrouter.ai` `/api/alpha/decisions` |
-| Key | `TYPESAFE_API_KEY` | `OPENROUTER_API_KEY` |
-| Per-call cost reported | no | yes, folded into `meta.cost_basis.jev_usd` |
-
-Set `judge.provider` and leave `judge.api_key_env` unset to let the key follow the
-provider. `judge.base_url` overrides the host for a self-hosted or proxied endpoint.
 
 ## Repository layout
 
