@@ -25,8 +25,8 @@ class DefaultsScreen(DraftCommitMixin, ArrowNavigationMixin, Screen[None]):
         self._dashboard = dashboard
 
     def compose(self) -> ComposeResult:
-        yield Static("Run defaults", id="defaults-title", classes="screen-title")
-        with Vertical(id="defaults-form"):
+        with Vertical(id="defaults-form") as form:
+            form.border_title = "Run defaults"
             yield Static("Default preset", classes="field-label")
             yield Select([("(none)", NONE_VALUE)], allow_blank=False, id="preset-select")
             yield Static("Max output tokens", classes="field-label")

@@ -280,11 +280,13 @@ class DashboardScreen(Screen[None]):
 
     def _harness_summary(self) -> str:
         status = self.app.harness_status
-        summary = (
-            f"{NODE} Harness  claude-code {self._yes_no(status.get('claude-code', False))}    "
-            f"codex {self._yes_no(status.get('codex', False))}    "
-            f"opencode {self._yes_no(status.get('opencode', False))}"
+        # One per line: the nav column is 28 wide and a single run-on line wrapped
+        # mid-pair, so the name and its state ended up on different rows.
+        rows = "\n".join(
+            f"  {name:<12}{self._yes_no(status.get(name, False))}"
+            for name in ("claude-code", "codex", "opencode")
         )
+        summary = f"{NODE} Harness\n{rows}"
         return f"{summary}\n{self._catalog_status}" if self._catalog_status else summary
 
     def _display_path(self, path: Path) -> str:

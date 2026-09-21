@@ -64,8 +64,8 @@ class MemberFormScreen(DraftCommitMixin, ArrowNavigationMixin, Screen[None]):
 
     def compose(self) -> ComposeResult:
         title = "Add member" if self.mode == "add" else f"Edit member: {self.member_id}"
-        yield Static(title, id="member-form-title", classes="screen-title")
-        with Vertical(id="member-form"):
+        with Vertical(id="member-form") as form:
+            form.border_title = title
             yield Static("Provider preset", classes="field-label")
             with Horizontal(classes="form-row"):
                 yield Select(

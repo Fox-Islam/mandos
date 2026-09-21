@@ -38,8 +38,8 @@ class JudgeScreen(DraftCommitMixin, ArrowNavigationMixin, Screen[None]):
         self._dashboard = dashboard
 
     def compose(self) -> ComposeResult:
-        yield Static("Judge", id="judge-title", classes="screen-title")
-        with Vertical(id="judge-form"):
+        with Vertical(id="judge-form") as form:
+            form.border_title = "Judge"
             yield Static("Shape", classes="field-label")
             yield Select(SHAPES, allow_blank=False, id="judge-shape")
             yield Static("Jev provider", classes="field-label")

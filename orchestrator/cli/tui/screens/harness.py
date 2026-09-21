@@ -29,13 +29,14 @@ class HarnessScreen(ArrowNavigationMixin, Screen[None]):
         self._dashboard = dashboard
 
     def compose(self) -> ComposeResult:
-        yield Static("Wire harnesses", id="harness-title", classes="screen-title")
-        with Vertical(id="harness-form"):
+        with Vertical(id="harness-form") as form:
+            form.border_title = "Wire harnesses"
             yield Checkbox("claude-code", id="harness-claude-code")
             yield Checkbox("codex", id="harness-codex")
+            yield Checkbox("opencode", id="harness-opencode")
+            # Codex-only, so it follows the roster instead of splitting it.
             yield Static("Codex tool output token limit", classes="field-label")
             yield Input(id="codex-output-limit", type="integer")
-            yield Checkbox("opencode", id="harness-opencode")
             with Horizontal(classes="form-row"):
                 yield Button("Apply", variant="primary", id="apply-harnesses")
                 yield Button("Cancel", id="cancel-harnesses")

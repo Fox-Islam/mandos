@@ -29,8 +29,8 @@ class RolesScreen(DraftCommitMixin, ArrowNavigationMixin, Screen[None]):
         self._panel_checkbox_ids: dict[str, str] = {}
 
     def compose(self) -> ComposeResult:
-        yield Static("Reassign roles", id="roles-title", classes="screen-title")
-        with Vertical(id="roles-form"):
+        with Vertical(id="roles-form") as form:
+            form.border_title = "Reassign roles"
             yield Static("Judge", classes="field-label")
             yield Select([("(none)", NONE_VALUE)], allow_blank=False, id="judge-select")
             yield Static("Panel membership", classes="field-label")

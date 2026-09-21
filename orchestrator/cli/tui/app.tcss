@@ -64,7 +64,9 @@ Screen {
 }
 
 #harness {
-    height: 2;
+    /* Auto: the block is a heading plus one row per harness, and the catalog status
+       appends another. A fixed height clipped everything after the first harness. */
+    height: auto;
 }
 
 #roster-title {
@@ -114,10 +116,6 @@ Screen {
 #action-menu > .option-list--option-highlighted {
     background: #F2914B;
     color: #0B0B0B;
-}
-
-#member-form-title {
-    height: 3;
 }
 
 #member-form {
@@ -172,13 +170,6 @@ Screen {
     overflow-y: auto;
 }
 
-#delete-title,
-#defaults-title,
-#roles-title,
-#harness-title {
-    height: 3;
-}
-
 #delete-status,
 #defaults-status,
 #roles-status,
@@ -205,29 +196,23 @@ Screen {
     scrollbar-size-vertical: 1;
 }
 
-/* The wordmark box is 10 rows for the dashboard's ASCII art; a one-line screen
-   title borrowing it rendered as a mostly empty box. */
-.screen-title {
-    height: 3;
-    width: 1fr;
-    content-align: center middle;
-    text-style: bold;
-    color: #F2914B;
-    background: #0B0B0B;
-    border: double #F2914B;
-}
 
 
-
-/* The scrolling widget owns its scrollbar, so setting these on Screen alone left
-   the form scrollbars Textual's default blue. A border here would cost two rows and
-   push Save out of view on an 80x24 terminal, so the palette is all they take. */
+/* Every editing screen is framed the way the dashboard frames itself, with the
+   screen name in the border. This replaced a separate three-row title bar, so it
+   costs a row less than before. The scrolling widget also owns its scrollbar, which
+   stayed Textual blue while these rules lived on Screen. */
 #member-form,
 #judge-form,
 #defaults-form,
 #roles-form,
 #harness-form,
 #delete-member {
+    border: double #F2914B;
+    border-title-align: center;
+    border-title-color: #F2914B;
+    border-title-style: bold;
+    background: #0B0B0B;
     scrollbar-background: #0B0B0B;
     scrollbar-background-hover: #0B0B0B;
     scrollbar-background-active: #0B0B0B;
@@ -240,22 +225,22 @@ Screen {
 Input {
     background: #141210;
     color: #E8E2DA;
-    border: tall #5C3920;
+    border: round #5C3920;
 }
 Input:focus {
-    border: tall #F2914B;
+    border: round #F2914B;
 }
 Input.-invalid {
-    border: tall #C4462F;
+    border: round #C4462F;
 }
 
 Select > SelectCurrent {
     background: #141210;
     color: #E8E2DA;
-    border: tall #5C3920;
+    border: round #5C3920;
 }
 Select:focus > SelectCurrent {
-    border: tall #F2914B;
+    border: round #F2914B;
 }
 Select > SelectOverlay {
     background: #141210;
@@ -271,10 +256,10 @@ Select > SelectOverlay > .option-list--option-highlighted {
 Button {
     background: #141210;
     color: #E8E2DA;
-    border: tall #5C3920;
+    border: round #5C3920;
 }
 Button:focus {
-    border: tall #F2914B;
+    border: round #F2914B;
     text-style: bold;
 }
 Button.-primary {
@@ -282,19 +267,47 @@ Button.-primary {
     color: #F2914B;
 }
 Button.-primary:focus {
-    border: tall #F2914B;
+    border: round #F2914B;
 }
 
-Checkbox {
+/* No border: a tall one puts two blank rows around every entry, where the action
+   menu marks its focused row and stays compact. */
+Checkbox, RadioButton {
     background: #0B0B0B;
     color: #E8E2DA;
     border: none;
+    padding: 0 1;
 }
-Checkbox:focus {
+Checkbox:focus, RadioButton:focus {
+    background: #5C3920;
+}
+/* Textual highlights the focused label with its own accent; unset it or the row
+   turns bright blue in an orange terminal. */
+Checkbox:focus > .toggle--label,
+RadioButton:focus > .toggle--label {
+    background: #5C3920;
     color: #F2914B;
     text-style: bold;
 }
-Checkbox > .toggle--button {
+Checkbox > .toggle--button,
+RadioButton > .toggle--button {
+    background: #141210;
+    color: #5C3920;
+}
+Checkbox.-on > .toggle--button,
+RadioButton.-on > .toggle--button {
     background: #141210;
     color: #F2914B;
+}
+
+/* The roster is a DataTable and scrolls horizontally on a narrow terminal. */
+#roster {
+    scrollbar-background: #0B0B0B;
+    scrollbar-background-hover: #0B0B0B;
+    scrollbar-background-active: #0B0B0B;
+    scrollbar-color: #5C3920;
+    scrollbar-color-hover: #D67D3D;
+    scrollbar-color-active: #F2914B;
+    scrollbar-size-horizontal: 1;
+    scrollbar-size-vertical: 1;
 }
