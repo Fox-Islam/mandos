@@ -42,3 +42,30 @@ def test_documented_fallback_chains_match_the_code() -> None:
         assert row is not None, f"no degradation row for {shape!r}"
         for fallback in chain:
             assert f"`{fallback}`" in row, f"{shape!r} falls back to {fallback!r}, not in its row"
+
+
+def test_documented_defaults_match_the_code() -> None:
+    """The configuration reference prints a `defaults:` block as the shipped values.
+
+    It drifted to `max_depth: 1` while the code default was 3, which is exactly the
+    kind of claim a reader acts on without checking.
+    """
+    import re
+
+    import yaml
+
+    from orchestrator.settings import Defaults
+
+    page = (ROOT / "docs" / "architecture" / "04-configuration-reference.md").read_text(
+        encoding="utf-8"
+    )
+    block = re.search(r"## Defaults\n\n.*?```yaml\n(.*?)```", page, re.S)
+    assert block, "no defaults block in the configuration reference"
+    documented = yaml.safe_load(block.group(1))["defaults"]
+
+    for key, value in documented.items():
+        field = Defaults.model_fields.get(key)
+        assert field is not None, f"documented default {key!r} is not a Defaults field"
+        if field.default is None:  # no built-in default; the page says so in prose
+            continue
+        assert field.default == value, f"{key}: page says {value!r}, code says {field.default!r}"

@@ -33,7 +33,8 @@ were removed.
   `models.py`, `interfaces.py`, `costing.py`, `observability.py`, `json_utils.py`,
   `fakes.py`, `data/` (bundled model-catalog seed), `cli/` (the `mandos` configurator
   TUI), `tests/`.
-- `config/` - `mandos.example.yaml` (illustrative providers, judge, presets, pricing).
+- `config/` - `mandos.default.yaml` (a working OpenRouter panel judged by Jev) and
+  `mandos.example.yaml` (every option, annotated).
 - `scripts/` - `install.sh`, `install.ps1`, and stdio smoke helpers (Bash + PowerShell).
 - `docs/architecture/` - live architecture, pipeline, judge shapes, configuration,
   security, deployment, and dependency references.

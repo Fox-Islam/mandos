@@ -1,0 +1,51 @@
+# A working starting point: three panel members from different vendors, all reached
+# through OpenRouter, judged by Jev. Copy it to ~/.mandos/config.json (or .yaml) and
+# set one key, or run `mandos` and let the configurator write it for you.
+#
+# For the annotated tour of every option, including local vLLM members, provider-side
+# tools and pricing overrides, see mandos.example.yaml.
+
+# Jev does the judging. Reaching it through OpenRouter means the whole file needs one
+# key; set `provider: typesafe` to go direct, which reads TYPESAFE_API_KEY instead.
+judge:
+  shape: hybrid          # hybrid | matrix | verify | probe | llm
+  provider: openrouter
+  model: jev-latest
+
+defaults:
+  preset: quality
+  # The generative analyst: proposes claims for `hybrid`, proposes gaps for `probe`,
+  # writes the analysis for `verify` and `llm`, and stands in when Jev cannot deliver.
+  analysis_model: gemini
+  timeout_s: 90
+  max_depth: 3
+
+# One key covers every member below.
+providers:
+  - id: gemini
+    kind: openrouter
+    base_url: https://openrouter.ai/api/v1
+    model: google/gemini-3-flash-preview
+    api_key_env: OPENROUTER_API_KEY
+    roles: [panel, judge]
+
+  - id: deepseek
+    kind: openrouter
+    base_url: https://openrouter.ai/api/v1
+    model: deepseek/deepseek-v4-pro
+    api_key_env: OPENROUTER_API_KEY
+    roles: [panel]
+
+  - id: grok
+    kind: openrouter
+    base_url: https://openrouter.ai/api/v1
+    model: x-ai/grok-4.3
+    api_key_env: OPENROUTER_API_KEY
+    roles: [panel]
+
+# A panel of one is worth convening with `judge_shape: probe`, which asks only what the
+# answer was missing.
+presets:
+  quality: { panel: [gemini, deepseek, grok], analysis: gemini }
+  budget:  { panel: [gemini, deepseek], analysis: gemini }
+  solo:    { panel: [gemini], analysis: gemini }

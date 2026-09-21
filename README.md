@@ -234,7 +234,7 @@ orchestrator/        the service package
   costing.py         cost estimation; json_utils.py — tolerant JSON for the llm judge
   cli/               the mandos configurator: TUI, catalog, config ops, secrets, probe, harness/
   tests/             pytest suite (respx for HTTP, deterministic Jev fake, opt-in live)
-config/              mandos.example.yaml (providers, judge, context, presets, pricing)
+config/              mandos.default.yaml (a working panel), mandos.example.yaml (every option)
 scripts/             install.sh, install.ps1, stdio smoke, hooks/capture_transcript.py
 docs/architecture/   live architecture, judge shapes, configuration, security, deployment
 .agents/skills/      mandos-deliberate skill
@@ -280,7 +280,10 @@ whatever it is told to.
 ## Configuration
 
 Run `mandos` to write `~/.mandos/config.json` and `~/.mandos/.env` (0600). The in-repo
-`config/mandos.example.yaml` is illustrative. Both JSON and YAML are supported by
+`config/mandos.default.yaml` is a working starting point: three members from different
+vendors reached through OpenRouter, judged by Jev, so one key covers the file. Copy it
+to `~/.mandos/config.yaml` and set `OPENROUTER_API_KEY`. `config/mandos.example.yaml`
+is the annotated tour of every option. Both JSON and YAML are supported by
 extension; the TUI writes JSON. **Secrets live only in env vars referenced by name**
 (`api_key_env`) - never in the config file, never logged, never returned by
 `mandos_status`.
