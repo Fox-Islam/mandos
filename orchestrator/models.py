@@ -73,6 +73,10 @@ class DeliberateRequest(BaseModel):
     panel: list[str] | None = Field(default=None, min_length=1, max_length=8)
     preset: str | None = None
     analysis_model: str | None = None
+    # None follows config. Worth overriding per call because the right shape is a
+    # property of the question, not of the installation: `probe` for one that turns
+    # on a missing fact, `hybrid` for one the models will genuinely differ on.
+    judge_shape: JudgeShape | None = None
     max_tokens: int | None = Field(default=None, ge=1)
     temperature: float | None = Field(default=None, ge=0, le=2)
     reasoning_effort: ReasoningEffort | None = None

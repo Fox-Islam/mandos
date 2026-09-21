@@ -617,3 +617,37 @@ async def test_meta_says_whether_another_pass_is_worth_it(monkeypatch):
 
     deeper = await run_deliberation(DeliberateRequest(prompt="q", depth=2), config)
     assert deeper.meta["passes_remaining"] == 0
+
+
+async def test_a_call_can_pick_its_own_judge_shape(monkeypatch):
+    """The right shape depends on the question, not the installation, so a caller that
+    knows which it is facing can say so."""
+    from orchestrator.fakes import FakeJevClient
+    from orchestrator.settings import JudgeConfig
+
+    jev = FakeJevClient()
+    monkeypatch.setattr("orchestrator.panel.build_jev_client", lambda judge, client: jev)
+    patch_providers(monkeypatch, all_ok_mapping())
+    config = make_config(judge=JudgeConfig(shape="matrix"))
+
+    default = await run_deliberation(DeliberateRequest(prompt="q"), config)
+    assert default.meta["judge_shape"] == "matrix"
+    assert default.analysis.calibration.shape == "matrix"
+
+    override = await run_deliberation(DeliberateRequest(prompt="q", judge_shape="llm"), config)
+    assert override.meta["judge_shape"] == "llm"
+    assert override.analysis.consensus == ["agree on X"]
+
+
+async def test_the_failure_envelope_reports_the_requested_shape(monkeypatch):
+    patch_providers(
+        monkeypatch,
+        {
+            "a": FakeChatProvider("a", error="HTTP 500: down"),
+            "b": FakeChatProvider("b", error="HTTP 500: down"),
+            "ja": FakeChatProvider("ja", text=ANALYSIS_JSON_IDS),
+        },
+    )
+    resp = await run_deliberation(DeliberateRequest(prompt="q", judge_shape="probe"), make_config())
+    assert resp.meta["judge_shape"] == "probe"
+    assert resp.meta["failure"] == "all_panels_failed"

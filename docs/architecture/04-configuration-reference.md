@@ -140,7 +140,7 @@ Each preset must have a non-empty `panel` of 1-8 unique enabled panel providers.
 
 ## Tool Arguments
 
-`mandos(prompt, context, panel, preset, analysis_model, max_tokens,
+`mandos(prompt, context, panel, preset, analysis_model, judge_shape, max_tokens,
 temperature, reasoning_effort, timeout_s, thread_id, prior_answer,
 use_conversation, depth)` builds a `DeliberateRequest`.
 
@@ -148,8 +148,12 @@ Resolution precedence is:
 
 - `panel`: request `panel` -> preset `panel` -> all enabled panel providers
 - `analysis_model`: request `analysis_model` -> preset `analysis` ->
-  `defaults.analysis_model`. This selects the *generative analyst*; the judge shape
-  itself is config-only.
+  `defaults.analysis_model`. This selects the *generative analyst*.
+- `judge_shape`: request `judge_shape` -> `judge.shape`. The right shape depends on
+  the question rather than the installation — `probe` when the answer turns on a fact
+  nobody has, `hybrid` when the models will genuinely differ — so a caller that knows
+  which it is facing can say so. A caller may select `llm` and bypass Jev entirely,
+  which means `judge.shape` is a default rather than a guarantee.
 - execution knobs: request value -> matching default
 - session mode: when `thread_id` is present, Mandos loads
   `~/.mandos/sessions/<thread_id>.json`, treats `prior_answer` as the previous

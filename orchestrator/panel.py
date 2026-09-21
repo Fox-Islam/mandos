@@ -629,7 +629,7 @@ async def _run_deliberation(
     log.info(
         "deliberation.start",
         panel=panel_ids,
-        judge_shape=config.judge.shape,
+        judge_shape=request.judge_shape or config.judge.shape,
         analysis_model=analysis_id,
         preset=request.preset or config.defaults.preset,
         depth=request.depth,
@@ -692,7 +692,7 @@ async def _run_deliberation(
         "failed": len(panel) - len(ok_results),
         "preset": request.preset or config.defaults.preset,
         "analysis_model": analysis_id,
-        "judge_shape": config.judge.shape,
+        "judge_shape": request.judge_shape or config.judge.shape,
         "judge_provider": config.judge.provider if config.judge.uses_jev else None,
         "judge_model": config.judge.model if config.judge.uses_jev else None,
         "budget": _budget_meta(
@@ -737,11 +737,14 @@ async def _run_deliberation(
     analysis_provider, judge_role_error = _resolve_analysis_provider(
         analysis_id, provider_desc, client
     )
-    await _report(on_progress, len(providers), total, f"judging ({config.judge.shape})")
+    # The right shape depends on the question rather than the installation, so a caller
+    # that knows which it is facing may say so; config supplies the default.
+    shape = request.judge_shape or config.judge.shape
+    await _report(on_progress, len(providers), total, f"judging ({shape})")
     outcome = await run_judge(
         request.prompt,
         raw,
-        shape=config.judge.shape,
+        shape=shape,
         deadline=deadline,
         context=request.context,
         jev_client=build_jev_client(config.judge, client),

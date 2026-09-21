@@ -140,7 +140,7 @@ judge stage produces measurements rather than assertions. Four consequences:
 
 ## The four judge shapes
 
-Set `judge.shape` in config, or pass `analysis_model` per call.
+Set `judge.shape` in config for the default, or pass `judge_shape` per call when you know which kind of question you are asking.
 
 | shape | what runs | what you get |
 |---|---|---|

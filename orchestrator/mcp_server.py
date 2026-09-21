@@ -5,7 +5,7 @@ from typing import Annotated
 from fastmcp import FastMCP
 from pydantic import Field, ValidationError
 
-from orchestrator.models import DeliberateRequest, ReasoningEffort
+from orchestrator.models import DeliberateRequest, JudgeShape, ReasoningEffort
 from orchestrator.observability import configure_logging
 from orchestrator.panel import failure_response, run_deliberation
 from orchestrator.sessions import clear_sessions
@@ -110,7 +110,7 @@ async def mandos(
             description=(
                 "Override the generative analyst (proposes claims, or writes the "
                 "analysis, or is the fallback); must be an enabled 'judge'-role "
-                "provider. The judge shape itself is configured, not per call."
+                "provider. Use `judge_shape` to change how it is judged."
             ),
         ),
     ] = None,
@@ -134,6 +134,20 @@ async def mandos(
     timeout_s: Annotated[
         float | None,
         Field(default=None, gt=0, description="Overall deadline in seconds for the deliberation."),
+    ] = None,
+    judge_shape: Annotated[
+        JudgeShape | None,
+        Field(
+            default=None,
+            description=(
+                "Override the judge for this call. 'probe' reports only what the panel "
+                "lacked and does not deliberate — use it when the answer turns on a "
+                "fact nobody has. 'hybrid' adjudicates claims and attributes them. "
+                "'matrix' measures agreement with no generative model in the loop. "
+                "'verify' has an analyst write and Jev grade it. 'llm' skips Jev "
+                "entirely. Omit to use the configured default."
+            ),
+        ),
     ] = None,
     use_conversation: Annotated[
         bool | None,
@@ -176,6 +190,10 @@ async def mandos(
     missing, so a second call with that evidence supplied is often worth more than
     guessing what to include up front.
 
+    `judge_shape` picks how the panel is judged for this call: 'probe' when the answer
+    hinges on information nobody was given, 'hybrid' when the models will genuinely
+    differ and you want the disagreement attributed.
+
     You (the calling model) remain the final author: read the analysis, its numbers,
     and the raw answers, then write the answer.
     """
@@ -188,6 +206,7 @@ async def mandos(
             panel=panel,
             preset=preset,
             analysis_model=analysis_model,
+            judge_shape=judge_shape,
             max_tokens=max_tokens,
             temperature=temperature,
             reasoning_effort=reasoning_effort,
