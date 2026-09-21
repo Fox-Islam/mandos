@@ -25,6 +25,11 @@ import httpx
 # bounded so a runaway caller cannot exhaust the host's file descriptors.
 LIMITS = httpx.Limits(max_connections=64, max_keepalive_connections=32)
 
+# Longest a provider may tell us to wait before we ignore it and use our own backoff.
+# A provider asking for five minutes is not offering a retry, it is asking us to give
+# up, and the deliberation's deadline would kill the attempt long before then anyway.
+MAX_RETRY_AFTER_S = 30.0
+
 _client: httpx.AsyncClient | None = None
 _loop: asyncio.AbstractEventLoop | None = None
 
@@ -41,6 +46,31 @@ def shared_client() -> httpx.AsyncClient:
         _client = httpx.AsyncClient(limits=LIMITS, timeout=None)
         _loop = loop
     return _client
+
+
+def parse_retry_after(headers) -> float | None:
+    """Seconds a provider asked us to wait, if it asked and the ask is reasonable.
+
+    Honoured for every provider, not just the one that happened to rate-limit us
+    during testing: a 429 or 503 from a chat endpoint means the same thing it means
+    from Jev. ``retry-after-ms`` is read too, because some providers send that instead.
+
+    HTTP-date values are ignored rather than parsed — they are rare in practice, and
+    guessing wrong is worse than falling back to exponential backoff.
+    """
+    milliseconds = headers.get("retry-after-ms")
+    if milliseconds is not None:
+        try:
+            return min(max(float(milliseconds) / 1000, 0.0), MAX_RETRY_AFTER_S)
+        except (TypeError, ValueError):
+            pass
+    seconds = headers.get("retry-after")
+    if seconds is None:
+        return None
+    try:
+        return min(max(float(seconds), 0.0), MAX_RETRY_AFTER_S)
+    except (TypeError, ValueError):
+        return None
 
 
 async def aclose_shared_client() -> None:

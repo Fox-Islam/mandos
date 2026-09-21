@@ -10,6 +10,7 @@ import httpx
 from openai import APIConnectionError, APIStatusError, AsyncOpenAI
 
 from orchestrator.attribution import attribution_headers
+from orchestrator.http import parse_retry_after
 from orchestrator.models import ChatRequest, ChatResult, TokenUsage
 from orchestrator.settings import ProviderDescriptor
 
@@ -27,6 +28,8 @@ class _AttemptOutcome:
 
     result: ChatResult | None = None
     error: str = ""
+    # Seconds the provider asked us to wait, when it said so.
+    retry_after: float | None = None
 
 
 class OpenAiCompatibleProvider:
@@ -81,7 +84,9 @@ class OpenAiCompatibleProvider:
             if outcome.result is not None:
                 return outcome.result
             last_error = outcome.error
-            if attempt + 1 < max_attempts and await self._backoff(attempt, deadline):
+            if attempt + 1 < max_attempts and await self._backoff(
+                attempt, deadline, outcome.retry_after
+            ):
                 continue
             return self._err(last_error, started, attempts=made)
         return self._err(last_error, started, attempts=made)
@@ -130,7 +135,7 @@ class OpenAiCompatibleProvider:
         except APIStatusError as exc:
             message = self._status_error_message(exc)
             if exc.status_code in _RETRYABLE_STATUSES or exc.status_code >= 500:
-                return _AttemptOutcome(error=message)
+                return _AttemptOutcome(error=message, retry_after=self._retry_after(exc))
             return _AttemptOutcome(result=self._err(message, started, attempts=attempts))
         except APIConnectionError as exc:
             return _AttemptOutcome(error=str(exc) or type(exc).__name__)
@@ -139,6 +144,13 @@ class OpenAiCompatibleProvider:
                 result=self._err(str(exc) or type(exc).__name__, started, attempts=attempts)
             )
         return _AttemptOutcome(result=self._success_result(completion, started, attempts))
+
+    @staticmethod
+    def _retry_after(exc: APIStatusError) -> float | None:
+        try:
+            return parse_retry_after(exc.response.headers)
+        except Exception:  # noqa: BLE001
+            return None
 
     @staticmethod
     def _status_error_message(exc: APIStatusError) -> str:
@@ -178,12 +190,17 @@ class OpenAiCompatibleProvider:
             attempts=attempts,
         )
 
-    async def _backoff(self, attempt: int, deadline: float) -> bool:
-        """Sleep exponential backoff + jitter, bounded by the deadline.
+    async def _backoff(
+        self, attempt: int, deadline: float, retry_after: float | None = None
+    ) -> bool:
+        """Sleep before the next attempt, bounded by the deadline.
 
-        Returns False when there is no time left to retry.
+        A provider's own ``Retry-After`` wins over exponential backoff: it knows when
+        it will be ready and we are guessing. Returns False when there is no time left
+        to retry.
         """
-        wait = min(2.0, 0.2 * (2**attempt)) + _retry_jitter_seconds()
+        wait = retry_after if retry_after is not None else min(2.0, 0.2 * (2**attempt))
+        wait += _retry_jitter_seconds()
         if time.monotonic() + wait >= deadline:
             return False
         await asyncio.sleep(wait)

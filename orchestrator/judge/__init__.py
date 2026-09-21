@@ -25,7 +25,14 @@ analysis; ``fallback_from`` records what was asked for. ``hybrid`` falls to ``ma
 before ``llm``, because most of what stops it — an analyst that is unreachable, or that
 proposed nothing to adjudicate because the panel agreed — says nothing about whether
 Jev is reachable, and dropping straight to a generative judge throws away the
-calibration for no reason. Only when Jev itself is gone does anything fall to ``llm``.
+calibration for no reason. Only when nothing in the chain delivers does the analysis
+come back ``None``.
+
+The chain does not branch on *which* provider failed. Any of them can fail
+transiently, and one bad call is not evidence that the next will be: ``matrix`` sends a
+much smaller batch than ``hybrid``, so it is a real recovery path even when Jev has
+just refused a wide one. Skipping it would trade a cheap retry for a permanent
+downgrade on the strength of a single error.
 ``matrix`` is the only shape that needs no chat provider at all, so it is also the only
 one that still works when the judge role is unconfigured.
 """

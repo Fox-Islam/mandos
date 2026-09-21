@@ -45,7 +45,10 @@ class Defaults(BaseModel):
     preset: str | None = None
     analysis_model: str | None = None
     timeout_s: float = 90
-    max_depth: int = 1
+    # Bounds the evidence-gathering loop: a caller may convene, fetch what the
+    # judge asked for, and convene again until the chain reaches this many passes.
+    # It was 1, which rejected the very retry the /council prompt asks for.
+    max_depth: int = 3
     # 1024 truncated real panel answers into stubs and, worse, cut the generative
     # judge off mid-JSON on any panel worth convening. OpenRouter's Fusion allows
     # 16000 per inner call; 4096 is a middle that answers properly without inviting

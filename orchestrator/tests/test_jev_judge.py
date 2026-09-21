@@ -127,8 +127,8 @@ async def test_hybrid_asks_one_question_per_claim_and_member_in_one_call():
 
     assert len(jev.calls) == 1
     questions = jev.calls[0]["questions"]
-    # 5 claims x (3 members + contested + standing), 3 readings per member, 2 gaps
-    assert len(questions) == 5 * 5 + 3 * 3 + 2
+    # 5 claims x (3 members + contested + standing), 4 readings per member, 2 gaps
+    assert len(questions) == 5 * 5 + 3 * 4 + 2
 
 
 async def test_batching_splits_wide_question_sets_across_calls():
@@ -136,7 +136,7 @@ async def test_batching_splits_wide_question_sets_across_calls():
     await _run("hybrid", jev, _extractor(), batch_size=10)
 
     assert len(jev.calls) == 4
-    assert sum(len(call["questions"]) for call in jev.calls) == 36
+    assert sum(len(call["questions"]) for call in jev.calls) == 39
 
 
 async def test_the_judge_is_shown_the_context_the_panel_saw():
@@ -288,7 +288,7 @@ async def test_jev_spend_and_call_counts_are_recorded():
     outcome = await _run("hybrid", jev, _extractor(), batch_size=10)
 
     assert outcome.jev_calls == 4
-    assert outcome.jev_questions == 36
+    assert outcome.jev_questions == 39
     assert outcome.jev_cost == pytest.approx(0.0008)
     assert outcome.jev_usage.input == 400
 
@@ -397,3 +397,64 @@ async def test_the_panel_reports_what_it_was_missing():
 async def test_nothing_missing_means_no_evidence_block():
     outcome = await _run("hybrid", FakeJevClient(_hybrid_script()), _extractor())
     assert outcome.analysis.needs_evidence == []
+
+
+async def test_matrix_notices_an_answer_that_says_it_is_working_blind():
+    """`matrix` cannot name what is missing — that needs a generative pass — but it can
+    report that the panel said something was."""
+    jev = FakeJevClient({qname("gap", "a"): {"noul": 0.92}, qname("gap", "b"): {"noul": 0.05}})
+    outcome = await _run("matrix", jev)
+
+    flags = {p.id: p.flagged_gap for p in outcome.analysis.calibration.per_answer}
+    assert flags["a"] == 0.92
+    assert flags["b"] == 0.05
+
+
+async def test_the_generative_judge_reports_gaps_too():
+    """Asserted rather than measured, so `lacked` stays null — but a caller can still
+    act on it, and the missing number says which kind of claim it is."""
+    analysis_json = json.dumps(
+        {
+            "consensus": ["something"],
+            "contradictions": [],
+            "partial_coverage": [],
+            "unique_insights": [],
+            "blind_spots": [],
+            "needs_evidence": [{"item": "the row count of the jobs table", "would_change": 0.8}],
+            "confidence_notes": "",
+        }
+    )
+    outcome = await _run("llm", None, FakeChatProvider("ja", text=analysis_json))
+
+    assert len(outcome.analysis.needs_evidence) == 1
+    item = outcome.analysis.needs_evidence[0]
+    assert item.item == "the row count of the jobs table"
+    assert item.would_change == 0.8
+    assert item.lacked is None
+
+
+async def test_one_failed_jev_call_does_not_write_off_the_next_one():
+    """A shape that needs Jev is still tried after another Jev shape failed.
+
+    `matrix` asks a much smaller batch than `hybrid`, so it is a real recovery path
+    when Jev has just refused a wide one -- a transient 529 under load is not evidence
+    that the endpoint is gone. The chain does not branch on which provider failed.
+    """
+    calls: list[int] = []
+
+    class FlakyJev(FakeJevClient):
+        async def ask(self, state, questions, *, deadline):
+            calls.append(len(questions))
+            # Refuse the wide batch, answer the narrow one.
+            if len(questions) > 25:
+                self.error = "HTTP 529: system_overloaded"
+            else:
+                self.error = None
+            return await super().ask(state, questions, deadline=deadline)
+
+    outcome = await _run("hybrid", FlakyJev(), _extractor())
+
+    assert outcome.shape == "matrix"
+    assert outcome.fallback_from == "hybrid"
+    assert outcome.analysis.calibration.shape == "matrix"
+    assert len(calls) == 2, "matrix must still get its turn"

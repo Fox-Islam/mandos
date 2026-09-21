@@ -176,6 +176,9 @@ class AnswerProfile(BaseModel):
     hedging: float | None = None
     scope: float | None = None
     distinctive: float | None = Field(default=None, ge=0, le=1)
+    # P(this answer says outright that it lacked information it needed). Naming *what*
+    # is missing takes a generative pass, but noticing that an answer said so does not.
+    flagged_gap: float | None = Field(default=None, ge=0, le=1)
 
 
 class Outlier(BaseModel):
@@ -220,8 +223,10 @@ class NeedsEvidence(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
     item: str
-    # P(the answers genuinely lacked this rather than merely omitting it).
-    lacked: float = Field(ge=0, le=1)
+    # P(the answers genuinely lacked this rather than merely omitting it). ``None`` when
+    # a generative judge asserted the gap instead of Jev measuring it — an asserted gap
+    # is still worth acting on, but the absence of a number says which it is.
+    lacked: float | None = Field(default=None, ge=0, le=1)
     # P(having it would change the answer). Low means fetching it is not worth a rerun.
     would_change: float | None = Field(default=None, ge=0, le=1)
     confidence: float | None = Field(default=None, ge=0, le=1)

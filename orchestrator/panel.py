@@ -34,7 +34,12 @@ from orchestrator.sessions import (
 from orchestrator.transcript import capture_key, read_capture
 from orchestrator.transcript import render as render_turns
 
-SYSTEM = "Answer independently and thoroughly. Do not refer to other panelists."
+SYSTEM = (
+    "Answer independently and thoroughly. Do not refer to other panelists. "
+    "If answering well needs information you have not been given, say plainly what "
+    "is missing and what you are assuming in its place, then answer under that "
+    "assumption. Name the measurement that would settle it, not the topic."
+)
 
 CONTRACT_VERSION = "1"
 
@@ -113,6 +118,8 @@ def failure_response(
             "preset": None,
             "analysis_model": None,
             "judge_shape": judge_shape,
+            "evidence_outstanding": 0,
+            "passes_remaining": 0,
             "judge_provider": None,
             "judge_model": None,
             "judge_fallback_from": None,
@@ -257,13 +264,27 @@ def _numbers(claim) -> str:
     return f" _({'; '.join(bits)})_" if bits else ""
 
 
+# A gap worth another pass: likely enough to change the answer that fetching it beats
+# guessing. Below this, the caller is better off noting the assumption and moving on.
+WORTH_FETCHING = 0.5
+
+
+def _outstanding(analysis) -> int:
+    """How many gaps are decisive enough to justify convening again."""
+    if analysis is None:
+        return 0
+    return sum(1 for e in analysis.needs_evidence if (e.would_change or 0) >= WORTH_FETCHING)
+
+
 def _render_evidence(item) -> str:
     """One thing the panel lacked. ``would_change`` leads the numbers because it is
     what decides whether fetching it is worth a second pass."""
-    bits = [f"lacked {item.lacked:.2f}"]
+    bits = []
     if item.would_change is not None:
-        bits.insert(0, f"would change the answer {item.would_change:.2f}")
-    return f"- {item.item} _({'; '.join(bits)})_"
+        bits.append(f"would change the answer {item.would_change:.2f}")
+    if item.lacked is not None:
+        bits.append(f"lacked {item.lacked:.2f}")
+    return f"- {item.item} _({'; '.join(bits)})_" if bits else f"- {item.item}"
 
 
 def _render_contradictions(contradictions, index) -> list[str]:
@@ -735,6 +756,10 @@ async def _run_deliberation(
     meta["judge_fallback_from"] = outcome.fallback_from
     meta["jev_calls"] = outcome.jev_calls
     meta["jev_questions"] = outcome.jev_questions
+    # What a caller needs to decide whether to go round again: how many decisive gaps
+    # are still open, and how many more passes the guard will allow.
+    meta["evidence_outstanding"] = _outstanding(outcome.analysis)
+    meta["passes_remaining"] = max(0, config.defaults.max_depth - request.depth - 1)
 
     if outcome.analysis_error or judge_role_error:
         # A misconfigured analyst is part of why the judge came up short, so it

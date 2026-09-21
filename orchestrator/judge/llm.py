@@ -16,7 +16,14 @@ ANALYSIS_SYSTEM = (
     '[{"ids": ["provider-id"], "claim": "..."}]}], '
     '"partial_coverage": [{"ids": ["provider-id"], "point": "..."}], '
     '"unique_insights": [{"id": "provider-id", "insight": "..."}], '
-    '"blind_spots": ["..."], "confidence_notes": "..."}'
+    '"blind_spots": ["..."], '
+    '"needs_evidence": [{"item": "...", "would_change": 0.0}], '
+    '"confidence_notes": "..."}\n'
+    "needs_evidence is for facts the answers did not have and would have needed -- "
+    "a measurement, a schema, a version, a rate -- as opposed to blind_spots, which "
+    "is what they failed to discuss. Name the measurement that would settle it, not "
+    "the subject. would_change is your estimate, 0 to 1, of how much having it would "
+    "change the answer; sort the list by it, highest first."
 )
 
 

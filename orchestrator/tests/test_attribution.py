@@ -197,3 +197,37 @@ def test_a_client_executed_function_tool_is_refused_at_config_time():
                 )
             ],
         )
+
+
+def test_retry_after_is_read_from_either_header_and_bounded():
+    """Honoured for every provider, not just the one that rate-limited us in testing."""
+    from orchestrator.http import MAX_RETRY_AFTER_S, parse_retry_after
+
+    assert parse_retry_after({"retry-after": "2"}) == 2.0
+    assert parse_retry_after({"retry-after-ms": "1500"}) == 1.5
+    # Milliseconds win: a provider sending both means the precise one.
+    assert parse_retry_after({"retry-after": "9", "retry-after-ms": "250"}) == 0.25
+    # An ask longer than we would ever wait is clamped, not obeyed.
+    assert parse_retry_after({"retry-after": "600"}) == MAX_RETRY_AFTER_S
+    # An HTTP-date is ignored rather than guessed at.
+    assert parse_retry_after({"retry-after": "Wed, 21 Oct 2026 07:28:00 GMT"}) is None
+    assert parse_retry_after({}) is None
+
+
+@respx.mock
+async def test_a_rate_limited_provider_is_waited_out_as_it_asked(monkeypatch):
+    slept: list[float] = []
+
+    async def record(seconds):
+        slept.append(seconds)
+
+    monkeypatch.setattr("orchestrator.providers.openai_compatible.asyncio.sleep", record)
+    respx.post("https://openrouter.ai/api/v1/chat/completions").mock(
+        side_effect=[
+            httpx.Response(429, text="slow down", headers={"retry-after": "3"}),
+            httpx.Response(200, json=CHAT_BODY),
+        ]
+    )
+    await _send(_descriptor(kind="openrouter", max_retries=2))
+
+    assert slept and 3.0 <= slept[0] <= 3.2, slept

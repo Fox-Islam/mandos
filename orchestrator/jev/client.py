@@ -22,6 +22,7 @@ from typing import Any
 import httpx
 
 from orchestrator.attribution import attribution_headers
+from orchestrator.http import parse_retry_after
 from orchestrator.models import TokenUsage
 
 # Retried for the same reasons the chat provider retries them: transient by nature and
@@ -63,6 +64,8 @@ class JevResult:
     usage: TokenUsage = field(default_factory=TokenUsage)
     cost: float | None = None
     questions_asked: int = 0
+    # Seconds the provider asked us to wait before retrying, when it said so.
+    retry_after: float | None = None
     latency_ms: int = 0
     attempts: int = 1
     status: str = "ok"
@@ -146,7 +149,9 @@ class JevClient:
                 outcome.questions_asked = len(questions)
                 return outcome
             last_error = outcome.error or last_error
-            if attempt < self.max_retries and await self._backoff(attempt, deadline):
+            if attempt < self.max_retries and await self._backoff(
+                attempt, deadline, outcome.retry_after
+            ):
                 continue
             break
         return JevResult(
@@ -191,6 +196,7 @@ class JevClient:
                 error=f"HTTP {response.status_code}: {detail}",
                 provider=self.provider,
                 request_id=_request_id_header(response),
+                retry_after=parse_retry_after(response.headers),
             )
             retryable = response.status_code in _RETRYABLE_STATUSES or response.status_code >= 500
             return result, retryable
@@ -229,8 +235,13 @@ class JevClient:
             cost=float(cost) if isinstance(cost, int | float) else None,
         )
 
-    async def _backoff(self, attempt: int, deadline: float) -> bool:
-        wait = min(2.0, 0.2 * (2**attempt)) + _retry_jitter_seconds()
+    async def _backoff(
+        self, attempt: int, deadline: float, retry_after: float | None = None
+    ) -> bool:
+        """Sleep before the next attempt. A provider's own ``Retry-After`` wins over
+        our guess, since it knows when it will be ready and we do not."""
+        wait = retry_after if retry_after is not None else min(2.0, 0.2 * (2**attempt))
+        wait += _retry_jitter_seconds()
         if time.monotonic() + wait >= deadline:
             return False
         await asyncio.sleep(wait)

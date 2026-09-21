@@ -110,9 +110,19 @@ async def test_markdown_carries_analysis_and_raw_answers(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_depth_guard_caps_recursion(monkeypatch):
+async def test_a_chain_shorter_than_the_cap_is_allowed(monkeypatch):
+    """The whole point of the guard is to bound the evidence loop, not forbid it: a
+    caller that fetches what the judge asked for and convenes again must get through."""
     patch_providers(monkeypatch, all_ok_mapping())
     resp = await run_deliberation(DeliberateRequest(prompt="q", depth=1), make_config())
+    assert resp.meta.get("failure") is None
+    assert resp.meta["depth"] == 1
+    assert resp.analysis is not None
+
+
+async def test_depth_guard_caps_recursion(monkeypatch):
+    patch_providers(monkeypatch, all_ok_mapping())
+    resp = await run_deliberation(DeliberateRequest(prompt="q", depth=3), make_config())
     assert resp.meta["failure"] == "fusion_invocation_capped"
     assert resp.meta["ok"] == 0
 
@@ -141,7 +151,7 @@ async def test_request_analysis_model_unknown_provider_degrades(monkeypatch):
 async def test_depth_cap_meta_matches_success_key_set(monkeypatch):
     patch_providers(monkeypatch, all_ok_mapping())
     success = await run_deliberation(DeliberateRequest(prompt="q"), make_config())
-    capped = await run_deliberation(DeliberateRequest(prompt="q", depth=1), make_config())
+    capped = await run_deliberation(DeliberateRequest(prompt="q", depth=3), make_config())
     assert capped.meta["failure"] == "fusion_invocation_capped"
     assert set(success.meta) <= set(capped.meta)
 
@@ -154,7 +164,7 @@ async def test_emitted_failures_are_failurekind_members(monkeypatch):
     failed["b"] = FakeChatProvider("b", error="boom")
     r1 = await _run(monkeypatch, failed)
     patch_providers(monkeypatch, all_ok_mapping())
-    r2 = await run_deliberation(DeliberateRequest(prompt="q", depth=1), make_config())
+    r2 = await run_deliberation(DeliberateRequest(prompt="q", depth=3), make_config())
     r3 = await run_deliberation(DeliberateRequest(prompt="q", panel=["a", "a"]), make_config())
     for resp in (r1, r2, r3):
         assert resp.meta["failure"] in valid
@@ -241,7 +251,7 @@ async def test_all_branches_carry_cost_keys(monkeypatch):
     failed["b"] = FakeChatProvider("b", error="boom")
     fail = await _run(monkeypatch, failed)
     patch_providers(monkeypatch, all_ok_mapping())
-    cap = await run_deliberation(DeliberateRequest(prompt="q", depth=1), make_config())
+    cap = await run_deliberation(DeliberateRequest(prompt="q", depth=3), make_config())
     for resp in (success, fail, cap):
         assert "cost_estimate_usd" in resp.meta
         assert "cost_basis" in resp.meta
@@ -567,3 +577,43 @@ async def test_a_host_that_cannot_receive_progress_does_not_lose_its_answer(monk
 
     resp = await run_deliberation(DeliberateRequest(prompt="q"), make_config(), on_progress=explode)
     assert resp.analysis is not None
+
+
+async def test_meta_says_whether_another_pass_is_worth_it(monkeypatch):
+    """The caller decides whether to loop, so it needs both halves: how many decisive
+    gaps are open, and how many passes the guard will still allow."""
+    import json as _json
+
+    from orchestrator.fakes import FakeJevClient
+    from orchestrator.jev import qname
+    from orchestrator.settings import JudgeConfig
+
+    extraction = _json.dumps(
+        {
+            "claims": ["a claim"],
+            "blind_spots": [],
+            "missing_evidence": ["a decisive fact", "an irrelevant one"],
+        }
+    )
+    script = {qname("support", 0, pid): {"noul": 0.9} for pid in ("a", "b")} | {
+        qname("contested", 0): {"noul": 0.1},
+        qname("standing", 0): {"score": 1.5},
+        qname("lacked", 0): {"noul": 0.9},
+        qname("wouldchange", 0): {"noul": 0.8},
+        qname("lacked", 1): {"noul": 0.9},
+        qname("wouldchange", 1): {"noul": 0.1},
+    }
+    monkeypatch.setattr(
+        "orchestrator.panel.build_jev_client", lambda judge, client: FakeJevClient(script)
+    )
+    patch_providers(monkeypatch, all_ok_mapping(analysis_text=extraction))
+
+    config = make_config(judge=JudgeConfig(shape="hybrid"))
+    resp = await run_deliberation(DeliberateRequest(prompt="q"), config)
+
+    # Only the gap that would change the answer counts as outstanding.
+    assert resp.meta["evidence_outstanding"] == 1
+    assert resp.meta["passes_remaining"] == config.defaults.max_depth - 1
+
+    deeper = await run_deliberation(DeliberateRequest(prompt="q", depth=2), config)
+    assert deeper.meta["passes_remaining"] == 0

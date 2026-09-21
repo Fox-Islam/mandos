@@ -23,7 +23,7 @@ def _provider(client, **kw):
     return OpenAiCompatibleProvider(desc, client)
 
 
-async def _always_retry(attempt, deadline):  # noqa: ARG001
+async def _always_retry(attempt, deadline, retry_after=None):  # noqa: ARG001
     return True
 
 
@@ -172,3 +172,34 @@ async def test_call_provider_deadline_short_circuit_skips_call():
     assert result.status == "error"
     assert "overall deadline exceeded" in (result.error or "")
     assert fake.requests == []
+
+
+async def test_a_providers_own_retry_after_beats_our_guess(monkeypatch):
+    """It knows when it will be ready; exponential backoff is a guess."""
+    import time as _time
+
+    import httpx as _httpx
+
+    from orchestrator.providers.openai_compatible import OpenAiCompatibleProvider
+    from orchestrator.settings import ProviderDescriptor
+
+    slept: list[float] = []
+
+    async def record(seconds):
+        slept.append(seconds)
+
+    monkeypatch.setattr("orchestrator.providers.openai_compatible.asyncio.sleep", record)
+    async with _httpx.AsyncClient() as client:
+        provider = OpenAiCompatibleProvider(
+            ProviderDescriptor(id="p", base_url="https://x/v1", model="m"), client
+        )
+        deadline = _time.monotonic() + 100
+        assert await provider._backoff(0, deadline, 4.0) is True
+        assert 4.0 <= slept[-1] <= 4.2
+
+        # With none offered, the exponential guess stands.
+        assert await provider._backoff(3, deadline) is True
+        assert slept[-1] <= 2.2
+
+        # And a long wait the deadline cannot afford is refused, not slept through.
+        assert await provider._backoff(0, _time.monotonic() + 1, 20.0) is False
