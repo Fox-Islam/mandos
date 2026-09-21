@@ -24,7 +24,7 @@ wrong at the same rate, and it reports its certainty as an adjective.
 
 Jev cannot write that sentence. It answers named questions in fixed shapes — a
 probability for a yes/no, a label with a distribution, a level on a rubric — so the
-judge stage produces measurements rather than assertions. Three consequences:
+judge stage produces measurements rather than assertions. Four consequences:
 
 - **The analysis is checkable.** Every finding carries the support floor, the
   contested probability and the confidence it was derived from.
@@ -34,6 +34,9 @@ judge stage produces measurements rather than assertions. Three consequences:
   count is nearly free: measured here, a 6-question judgement and a 44-question one
   both land near 420ms, because a call costs its round trip and almost nothing per
   question. A whole panel is adjudicated in one call for about $0.0002.
+- **Asking more costs nothing, so it asks more.** Because questions are free, the
+  judge also reads each answer for hedging, scope and distinctiveness, and reports
+  what the panel said it was *missing* — see below.
 
 ## The four judge shapes
 
@@ -46,12 +49,39 @@ Set `judge.shape` in config, or pass `analysis_model` per call.
 | **`verify`** | the analyst writes, Jev grades what it wrote | each finding keeps its place and gains a probability that it holds |
 | **`llm`** | the analyst alone | uncalibrated, Fusion-style; the fallback |
 
-Only `matrix` needs no chat model for the judge role. Every Jev shape falls back to
-`llm` when Jev cannot deliver, recording both the failure and `meta.judge_fallback_from`.
+Only `matrix` needs no chat model for the judge role, and it is the one to pick when
+no generative model should touch the loop at all — though with a two-member panel it
+has little to measure, so a self-panel wants `hybrid`.
+
+Each shape falls back in order until one delivers: `hybrid` tries `matrix` before
+`llm`, because an analyst that is unreachable or that proposed nothing says nothing
+about whether Jev is reachable. `meta.judge_shape` reports what ran and
+`meta.judge_fallback_from` what was asked for.
 
 All three Jev shapes score every finding correctly and stably against the fixture in
 [`docs/architecture/03-judge-shapes.md#measured`](docs/architecture/03-judge-shapes.md),
 which is also where the default comes from.
+
+## When the panel doesn't have enough to go on
+
+The judge reports what the panel **lacked**, not just what it failed to mention:
+
+```
+**The panel was missing** (fetch and re-run if it matters)
+- the actual distribution of values in the status column _(would change the answer 0.91; lacked 0.95)_
+- the current EXPLAIN ANALYZE output for the query _(would change the answer 0.86; lacked 0.88)_
+```
+
+That is different from a blind spot. A blind spot is something nobody addressed; this
+is something nobody *could* address, because it was not in front of them — and it is
+the only one of the two a caller can act on, by fetching it and asking again.
+
+It is a field, never a failure. The first pass still returns a real analysis; whether
+to go and get the evidence is your model's decision, and `depth` caps the chain if it
+does. This matters because a panel reasoning without the decisive fact is worse than
+no panel: measured over 8 such questions, the author scored 7/8 alone, **6/8** with an
+uninformed panel, and **8/8** once the panel's own request was answered and it was
+asked again.
 
 ## Relationship to OpenRouter Fusion
 
@@ -72,9 +102,9 @@ What differs:
 | Panel input | your actual conversation | the conversation, via a capture hook, plus what your model passes |
 | Hosting | OpenRouter, one key | your own OpenAI-compatible providers, on-prem capable |
 
-The remaining gap is local data. A panel member can be given provider-side web search,
-and a capture hook gives it the conversation, but nothing reaches your files, shell or
-database on its own — the harness holds that access behind a permission model that asks
+The remaining gap is local data. A panel member can be given provider-side web search
+(`tools: [{ type: "openrouter:web_search" }]` on the provider), and a capture hook
+gives it the conversation, but nothing reaches your files, shell or database on its own — the harness holds that access behind a permission model that asks
 first, and an MCP subprocess running tools to feed a third-party panel would route
 around it. Local evidence gets to the panel because the calling model gathers it and
 passes it as `context`, where those prompts still apply.
@@ -178,20 +208,21 @@ orchestrator/        the service package
   mcp_server.py      FastMCP server — tools: mandos, mandos_status, mandos_clear_sessions; council prompts
   panel.py           panel fan-out (partial results + degradation) and Markdown rendering
   jev/               the Jev client: wire format, question primitives, provider switch
+  judge/             the four shapes, their shared question sets, and the dispatcher
   transcript.py      conversation capture: redaction, bounds, staleness
   attribution.py     labels OpenRouter calls as Mandos, and no other host
-  judge/             the four shapes — hybrid, matrix, verify, llm — and the dispatcher
-  model_catalog.py   offline-first model metadata, models.dev parser, cache helpers
+  http.py            one pooled HTTP client for the process, shared across deliberations
+  model_catalog.py   offline-first model metadata and pricing, models.dev parser, cache
   budget.py          advisory context-budget estimates
-  sessions.py        local council-session store and message reconstruction
+  sessions.py        local council-session store, message reconstruction, age pruning
   providers/         single OpenAI-compatible chat provider kind + factory
-  settings.py        JSON/YAML + env config; roles panel/judge; the judge block
-  models.py          Pydantic request/response models, including Calibration
+  settings.py        JSON/YAML + env config; the judge, context and provider blocks
+  models.py          Pydantic request/response models, Calibration and NeedsEvidence
   interfaces.py      Protocol seams; fakes.py — deterministic test doubles
   costing.py         cost estimation; json_utils.py — tolerant JSON for the llm judge
   cli/               the mandos configurator: TUI, catalog, config ops, secrets, probe, harness/
-  tests/             pytest suite (respx for HTTP, deterministic Jev fake)
-config/              mandos.example.yaml (illustrative providers, judge, presets, pricing)
+  tests/             pytest suite (respx for HTTP, deterministic Jev fake, opt-in live)
+config/              mandos.example.yaml (providers, judge, context, presets, pricing)
 scripts/             install.sh, install.ps1, stdio smoke, hooks/capture_transcript.py
 docs/architecture/   live architecture, judge shapes, configuration, security, deployment
 .agents/skills/      mandos-deliberate skill
@@ -245,12 +276,25 @@ extension; the TUI writes JSON. **Secrets live only in env vars referenced by na
 Resolution: `--config <path>` → `MANDOS_CONFIG` → `./mandos.{json,yaml}` →
 `~/.mandos/config.{json,yaml}`.
 
+Four blocks: `judge` (shape, Jev provider, model, key variable), `context` (what the
+panel is told about the conversation), `providers` (the roster, their roles and any
+provider-executed tools) and `defaults` (deadlines, token ceilings, budget ratios,
+session retention). `pricing` is optional — costs come from the model catalog when a
+provider is not listed there, so `meta.cost_estimate_usd` is real without a
+hand-maintained table.
+
 ## Integration
 
 Per-harness setup (Claude Code, Codex, OpenCode) is wired by the configurator. Every
 entry launches `mandos-mcp` over stdio with `MANDOS_CONFIG` pointed at
 `~/.mandos/config.json`. For manual snippets see
 [`docs/architecture/06-deployment.md`](docs/architecture/06-deployment.md).
+
+A deliberation is one blocking tool call that can run to the full `timeout_s`, so it
+reports progress as each panel member lands and again when the judge finishes. Several
+councils may be in flight at once: they share one pooled HTTP connection pool, and
+concurrent turns on a single `thread_id` serialise while different threads do not
+block each other.
 
 ## License
 
