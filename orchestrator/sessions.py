@@ -21,7 +21,9 @@ PERSISTED_TURNS_CAP = 200
 # session is a working file, not an archive, and every one of them holds prompts
 # and panel answers, so keeping them forever is a slowly growing disclosure.
 DEFAULT_SESSION_MAX_AGE_DAYS = 30
-_LOCKS: dict[str, asyncio.Lock] = {}
+# One lock per live session, dropped when the last waiter leaves. Keyed by resolved
+# path, so two callers naming the same thread serialise even via different roots.
+_LOCKS: dict[str, tuple[asyncio.Lock, int]] = {}
 
 
 def validate_thread_id(thread_id: str) -> str:
@@ -77,11 +79,28 @@ def write_session(data: dict[str, Any], *, root: str | Path | None = None) -> Pa
 
 @asynccontextmanager
 async def session_lock(thread_id: str, *, root: str | Path | None = None):
+    """Serialise concurrent turns on one thread.
+
+    The lock is reference-counted rather than kept forever: a long-running server that
+    sees many thread ids would otherwise accumulate one ``asyncio.Lock`` per thread for
+    the life of the process. Counting happens between awaits, so it needs no lock of
+    its own.
+    """
     path = session_path(thread_id, root=root)
     key = str(path.resolve(strict=False))
-    lock = _LOCKS.setdefault(key, asyncio.Lock())
-    async with lock:
-        yield
+    lock, waiters = _LOCKS.get(key, (None, 0))
+    if lock is None:
+        lock = asyncio.Lock()
+    _LOCKS[key] = (lock, waiters + 1)
+    try:
+        async with lock:
+            yield
+    finally:
+        held, count = _LOCKS[key]
+        if count <= 1:
+            del _LOCKS[key]
+        else:
+            _LOCKS[key] = (held, count - 1)
 
 
 def _analysis_summary(analysis: dict[str, Any] | None) -> str | None:

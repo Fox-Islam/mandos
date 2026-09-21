@@ -5,10 +5,9 @@ import re
 import time
 from collections.abc import Awaitable, Callable
 
-import httpx
-
 from orchestrator.budget import BudgetEstimate, classify_budget, estimate_provider_budget
 from orchestrator.costing import CostInput, estimate_cost
+from orchestrator.http import shared_client
 from orchestrator.jev import build_jev_client
 from orchestrator.judge import JudgeOutcome, build_judge_user, run_judge
 from orchestrator.model_catalog import metadata_from_provider_override, resolve_model_metadata
@@ -617,167 +616,167 @@ async def _run_deliberation(
         prompt_chars=len(request.prompt),
     )
 
-    async with httpx.AsyncClient() as client:
-        providers = [build_provider(provider_desc[pid], client) for pid in panel_ids]
-        chat_requests, compacted_by_provider, session_estimates = _build_chat_requests(
-            request, config, providers, provider_desc, session
+    # One pooled client for the process, so concurrent deliberations reuse
+    # connections instead of each paying for its own handshakes.
+    client = shared_client()
+    providers = [build_provider(provider_desc[pid], client) for pid in panel_ids]
+    chat_requests, compacted_by_provider, session_estimates = _build_chat_requests(
+        request, config, providers, provider_desc, session
+    )
+    compacted = any(compacted_by_provider.values())
+
+    total = len(providers) + 1  # panel members, then the judge
+    landed = 0
+
+    async def _tracked(provider) -> ChatResult:
+        nonlocal landed
+        result = await _call_provider(provider, chat_requests[provider.id], deadline)
+        landed += 1
+        await _report(on_progress, landed, total, f"{provider.id} answered ({result.status})")
+        return result
+
+    await _report(on_progress, 0, total, f"asking {len(providers)} panel members")
+    results = await asyncio.gather(*(_tracked(p) for p in providers))
+
+    panel = [
+        PanelAnswer(
+            id=r.provider_id,
+            model=r.model,
+            status=r.status,
+            error=r.error,
+            latency_ms=r.latency_ms,
+            tokens=r.usage,
+            finish_reason=r.finish_reason,
         )
-        compacted = any(compacted_by_provider.values())
-
-        total = len(providers) + 1  # panel members, then the judge
-        landed = 0
-
-        async def _tracked(provider) -> ChatResult:
-            nonlocal landed
-            result = await _call_provider(provider, chat_requests[provider.id], deadline)
-            landed += 1
-            await _report(on_progress, landed, total, f"{provider.id} answered ({result.status})")
-            return result
-
-        await _report(on_progress, 0, total, f"asking {len(providers)} panel members")
-        results = await asyncio.gather(*(_tracked(p) for p in providers))
-
-        panel = [
-            PanelAnswer(
-                id=r.provider_id,
-                model=r.model,
-                status=r.status,
-                error=r.error,
-                latency_ms=r.latency_ms,
-                tokens=r.usage,
-                finish_reason=r.finish_reason,
-            )
-            for r in results
-        ]
-        for r in results:
-            log.info(
-                "provider.result",
-                provider=r.provider_id,
-                status=r.status,
-                attempts=r.attempts,
-                latency_ms=r.latency_ms,
-                error_kind=_log_error_kind(r.error),
-            )
-        ok_results = [r for r in results if r.status == "ok"]
-        raw = [RawAnswer(id=r.provider_id, model=r.model, answer=r.text) for r in ok_results]
-
-        meta = {
-            "contract_version": CONTRACT_VERSION,
-            "elapsed_ms": int((time.perf_counter() - started) * 1000),
-            "depth": request.depth,
-            "panel_size": len(panel),
-            "ok": len(ok_results),
-            "failed": len(panel) - len(ok_results),
-            "preset": request.preset or config.defaults.preset,
-            "analysis_model": analysis_id,
-            "judge_shape": config.judge.shape,
-            "judge_provider": config.judge.provider if config.judge.uses_jev else None,
-            "judge_model": config.judge.model if config.judge.uses_jev else None,
-            "budget": _budget_meta(
-                request,
-                config,
-                panel_ids,
-                session_estimates=session_estimates if session is not None else None,
-            ),
-            "compacted": compacted,
-            "compacted_providers": sorted(
-                provider_id
-                for provider_id, was_compacted in compacted_by_provider.items()
-                if was_compacted
-            ),
-        }
-
-        if not ok_results:
-            meta["judge_fallback_from"] = None
-            meta["jev_calls"] = 0
-            meta["jev_questions"] = 0
-            meta["failure"] = _classify_failure([r.error or "" for r in results])
-            meta["error"] = "all panel providers failed"
-            _apply_cost(meta, [CostInput(r.provider_id, r.usage) for r in results], config.pricing)
-            # No judge ran, so nothing was spent on one — but the key must be present.
-            meta["cost_basis"]["jev_usd"] = None
-            resp = DeliberationResponse(
-                question=request.prompt,
-                thread_id=request.thread_id,
-                compacted=compacted,
-                panel=panel,
-                meta=meta,
-            )
-            resp.text = _render(resp)
-            log.warning(
-                "deliberation.failed",
-                failure=meta["failure"],
-                failed=meta["failed"],
-                elapsed_ms=meta["elapsed_ms"],
-            )
-            return resp
-
-        analysis_provider, judge_role_error = _resolve_analysis_provider(
-            analysis_id, provider_desc, client
-        )
-        await _report(on_progress, len(providers), total, f"judging ({config.judge.shape})")
-        outcome = await run_judge(
-            request.prompt,
-            raw,
-            shape=config.judge.shape,
-            deadline=deadline,
-            context=request.context,
-            jev_client=build_jev_client(config.judge, client),
-            analysis_provider=analysis_provider,
-            max_tokens=(
-                request.max_tokens
-                or config.defaults.analysis_max_tokens
-                or config.defaults.max_tokens
-            ),
-            batch_size=config.judge.questions_per_call,
-        )
-        await _report(on_progress, total, total, f"judge finished ({outcome.shape})")
-        meta["judge_shape"] = outcome.shape
-        meta["judge_fallback_from"] = outcome.fallback_from
-        meta["jev_calls"] = outcome.jev_calls
-        meta["jev_questions"] = outcome.jev_questions
-
-        if outcome.analysis_error or judge_role_error:
-            # A misconfigured analyst is part of why the judge came up short, so it
-            # belongs in the same field rather than a second one the host must know to
-            # look for.
-            meta["judge_error"] = "; ".join(
-                part for part in (judge_role_error, outcome.analysis_error) if part
-            )
-
-        panel_input = _compose_user(request.prompt, request.context, _conversation(request, config))
-        judge_input = build_judge_user(request.prompt, raw, request.context)
-        cost_calls = [
-            CostInput(
-                r.provider_id,
-                r.usage,
-                input_text=_sent_input_text(chat_requests[r.provider_id], panel_input),
-                output_text=r.text,
-                catalog_price=_catalog_price(provider_desc, r.provider_id),
-            )
-            for r in ok_results
-        ] + [
-            CostInput(
-                pid,
-                usage,
-                input_text=judge_input,
-                output_text=outcome.analysis_text,
-                catalog_price=_catalog_price(provider_desc, pid),
-            )
-            for pid, usage in outcome.usages
-        ]
-        _apply_cost(meta, cost_calls, config.pricing)
-        _apply_jev_cost(meta, outcome)
-
+        for r in results
+    ]
+    for r in results:
         log.info(
-            "judge.result",
-            shape=outcome.shape,
-            fallback_from=outcome.fallback_from,
-            analysis=outcome.analysis is not None,
-            jev_calls=outcome.jev_calls,
-            jev_questions=outcome.jev_questions,
-            judge_error=outcome.analysis_error,
+            "provider.result",
+            provider=r.provider_id,
+            status=r.status,
+            attempts=r.attempts,
+            latency_ms=r.latency_ms,
+            error_kind=_log_error_kind(r.error),
         )
+    ok_results = [r for r in results if r.status == "ok"]
+    raw = [RawAnswer(id=r.provider_id, model=r.model, answer=r.text) for r in ok_results]
+
+    meta = {
+        "contract_version": CONTRACT_VERSION,
+        "elapsed_ms": int((time.perf_counter() - started) * 1000),
+        "depth": request.depth,
+        "panel_size": len(panel),
+        "ok": len(ok_results),
+        "failed": len(panel) - len(ok_results),
+        "preset": request.preset or config.defaults.preset,
+        "analysis_model": analysis_id,
+        "judge_shape": config.judge.shape,
+        "judge_provider": config.judge.provider if config.judge.uses_jev else None,
+        "judge_model": config.judge.model if config.judge.uses_jev else None,
+        "budget": _budget_meta(
+            request,
+            config,
+            panel_ids,
+            session_estimates=session_estimates if session is not None else None,
+        ),
+        "compacted": compacted,
+        "compacted_providers": sorted(
+            provider_id
+            for provider_id, was_compacted in compacted_by_provider.items()
+            if was_compacted
+        ),
+    }
+
+    if not ok_results:
+        meta["judge_fallback_from"] = None
+        meta["jev_calls"] = 0
+        meta["jev_questions"] = 0
+        meta["failure"] = _classify_failure([r.error or "" for r in results])
+        meta["error"] = "all panel providers failed"
+        _apply_cost(meta, [CostInput(r.provider_id, r.usage) for r in results], config.pricing)
+        # No judge ran, so nothing was spent on one — but the key must be present.
+        meta["cost_basis"]["jev_usd"] = None
+        resp = DeliberationResponse(
+            question=request.prompt,
+            thread_id=request.thread_id,
+            compacted=compacted,
+            panel=panel,
+            meta=meta,
+        )
+        resp.text = _render(resp)
+        log.warning(
+            "deliberation.failed",
+            failure=meta["failure"],
+            failed=meta["failed"],
+            elapsed_ms=meta["elapsed_ms"],
+        )
+        return resp
+
+    analysis_provider, judge_role_error = _resolve_analysis_provider(
+        analysis_id, provider_desc, client
+    )
+    await _report(on_progress, len(providers), total, f"judging ({config.judge.shape})")
+    outcome = await run_judge(
+        request.prompt,
+        raw,
+        shape=config.judge.shape,
+        deadline=deadline,
+        context=request.context,
+        jev_client=build_jev_client(config.judge, client),
+        analysis_provider=analysis_provider,
+        max_tokens=(
+            request.max_tokens or config.defaults.analysis_max_tokens or config.defaults.max_tokens
+        ),
+        batch_size=config.judge.questions_per_call,
+    )
+    await _report(on_progress, total, total, f"judge finished ({outcome.shape})")
+    meta["judge_shape"] = outcome.shape
+    meta["judge_fallback_from"] = outcome.fallback_from
+    meta["jev_calls"] = outcome.jev_calls
+    meta["jev_questions"] = outcome.jev_questions
+
+    if outcome.analysis_error or judge_role_error:
+        # A misconfigured analyst is part of why the judge came up short, so it
+        # belongs in the same field rather than a second one the host must know to
+        # look for.
+        meta["judge_error"] = "; ".join(
+            part for part in (judge_role_error, outcome.analysis_error) if part
+        )
+
+    panel_input = _compose_user(request.prompt, request.context, _conversation(request, config))
+    judge_input = build_judge_user(request.prompt, raw, request.context)
+    cost_calls = [
+        CostInput(
+            r.provider_id,
+            r.usage,
+            input_text=_sent_input_text(chat_requests[r.provider_id], panel_input),
+            output_text=r.text,
+            catalog_price=_catalog_price(provider_desc, r.provider_id),
+        )
+        for r in ok_results
+    ] + [
+        CostInput(
+            pid,
+            usage,
+            input_text=judge_input,
+            output_text=outcome.analysis_text,
+            catalog_price=_catalog_price(provider_desc, pid),
+        )
+        for pid, usage in outcome.usages
+    ]
+    _apply_cost(meta, cost_calls, config.pricing)
+    _apply_jev_cost(meta, outcome)
+
+    log.info(
+        "judge.result",
+        shape=outcome.shape,
+        fallback_from=outcome.fallback_from,
+        analysis=outcome.analysis is not None,
+        jev_calls=outcome.jev_calls,
+        jev_questions=outcome.jev_questions,
+        judge_error=outcome.analysis_error,
+    )
 
     log.info(
         "deliberation.done",

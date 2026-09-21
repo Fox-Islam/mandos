@@ -60,6 +60,11 @@ classes, typed Pydantic request/response models. Keep provider, panel, and judge
 dependencies behind small `Protocol` interfaces so each stage stays testable with
 deterministic fakes. Match existing module style; avoid speculative abstractions.
 
+Nothing may assume it is the only caller. A harness can have several councils in
+flight, so new code takes the pooled client from `orchestrator.http.shared_client()`
+rather than building its own, and any process-level state it adds needs the same
+treatment the session lock map got: reference-counted, not accumulated.
+
 Judge code has one extra rule: a finding must be **derived from a measurement**. If
 you add a judgement, add the Jev question that settles it and the named threshold that
 reads its answer (see `SUPPORT_HIGH`, `CONTESTED`, `BLIND_SPOT` in

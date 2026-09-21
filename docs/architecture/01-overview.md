@@ -50,6 +50,10 @@ back into the harness model, and it does not synthesize final prose.
   by turns and characters, so the panel can be briefed on the discussion rather than on
   the calling model's retyped summary of it.
 - `orchestrator/attribution.py` labels OpenRouter calls as Mandos, and no other host.
+- `orchestrator/http.py` holds one pooled `httpx.AsyncClient` for the process. A
+  client per deliberation meant a fresh TLS handshake to every provider on every
+  call — around 350ms against 90ms of actual model time — and concurrent councils
+  competing for sockets instead of reusing them.
 - `orchestrator/sessions.py` stores local council-session history under
   `~/.mandos/sessions/<thread_id>.json`, reconstructs OpenAI `messages[]`, and
   compacts older turns when needed.
@@ -141,7 +145,10 @@ are never returned by `mandos_status`.
   search or fetch. For a question that turns on current facts, supply the facts in
   `context`.
 - It has no REST, Docker, or exposed port surface.
-- One-shot `/council` remains stateless apart from the per-request depth guard.
+- One-shot `/council` remains stateless apart from the per-request depth guard, and
+  several may run at once: deliberations share the pooled HTTP client and hold no
+  other mutable process state. Concurrent turns on one `thread_id` serialise on a
+  reference-counted per-session lock; different threads do not block each other.
 - `/council-session` is stateful on the MCP host only; its file contents are still
   sent to the configured panel providers on each session turn.
 - Context budgets are advisory; unknown windows degrade to `unknown`, not a block.
