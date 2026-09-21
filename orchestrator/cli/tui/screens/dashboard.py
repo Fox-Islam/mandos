@@ -212,13 +212,13 @@ class DashboardScreen(Screen[None]):
                     ("delete", "Delete selected member"),
                     ("roles", "Reassign roles"),
                     ("judge", "Edit judge"),
-                    ("defaults", "Run defaults"),
+                    ("defaults", "Edit run defaults"),
                 ]
             )
         else:
             actions.append(("wire", WIRE_HARNESSES_LABEL))
             actions.append(("judge", "Edit judge"))
-            actions.append(("defaults", "Run defaults"))
+            actions.append(("defaults", "Edit run defaults"))
             actions.append(("refresh", "Refresh model catalog"))
             actions.append(("quit", "Quit"))
             return actions
@@ -396,6 +396,10 @@ class DashboardScreen(Screen[None]):
             return
         member_id = self._selected_member_id()
         if member_id is None:
+            # A bare return left the menu looking broken on an empty roster.
+            self.query_one("#issues", Static).update(
+                "Select a council member first, or choose Add member."
+            )
             return
         from orchestrator.cli.tui.screens.member_form import MemberFormScreen
 
@@ -407,6 +411,8 @@ class DashboardScreen(Screen[None]):
             return
         member_id = self._selected_member_id()
         if member_id is None:
+            # A bare return left the menu looking broken on an empty roster.
+            self.query_one("#issues", Static).update("Select a council member first.")
             return
         from orchestrator.cli.tui.screens.delete_member import DeleteMemberScreen
 

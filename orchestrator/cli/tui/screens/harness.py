@@ -29,7 +29,7 @@ class HarnessScreen(ArrowNavigationMixin, Screen[None]):
         self._dashboard = dashboard
 
     def compose(self) -> ComposeResult:
-        yield Static("Wire harnesses", id="harness-title", classes="brand")
+        yield Static("Wire harnesses", id="harness-title", classes="screen-title")
         with Vertical(id="harness-form"):
             yield Checkbox("claude-code", id="harness-claude-code")
             yield Checkbox("codex", id="harness-codex")

@@ -185,3 +185,116 @@ Screen {
 #harness-status {
     min-height: 2;
 }
+
+/* ---------------------------------------------------------------------------
+   Sub-screen chrome and widget theming.
+
+   The dashboard was styled and nothing else was, so opening a form dropped the
+   double orange frame and fell back to Textual's stock palette: blue focus
+   borders, a blue scrollbar and white-on-blue selects against an orange theme.
+   These rules give every screen the same frame and put the widgets in palette.
+   --------------------------------------------------------------------------- */
+
+Screen {
+    scrollbar-background: #0B0B0B;
+    scrollbar-background-hover: #0B0B0B;
+    scrollbar-background-active: #0B0B0B;
+    scrollbar-color: #5C3920;
+    scrollbar-color-hover: #D67D3D;
+    scrollbar-color-active: #F2914B;
+    scrollbar-size-vertical: 1;
+}
+
+/* The wordmark box is 10 rows for the dashboard's ASCII art; a one-line screen
+   title borrowing it rendered as a mostly empty box. */
+.screen-title {
+    height: 3;
+    width: 1fr;
+    content-align: center middle;
+    text-style: bold;
+    color: #F2914B;
+    background: #0B0B0B;
+    border: double #F2914B;
+}
+
+
+
+/* The scrolling widget owns its scrollbar, so setting these on Screen alone left
+   the form scrollbars Textual's default blue. A border here would cost two rows and
+   push Save out of view on an 80x24 terminal, so the palette is all they take. */
+#member-form,
+#judge-form,
+#defaults-form,
+#roles-form,
+#harness-form,
+#delete-member {
+    scrollbar-background: #0B0B0B;
+    scrollbar-background-hover: #0B0B0B;
+    scrollbar-background-active: #0B0B0B;
+    scrollbar-color: #5C3920;
+    scrollbar-color-hover: #D67D3D;
+    scrollbar-color-active: #F2914B;
+    scrollbar-size-vertical: 1;
+}
+
+Input {
+    background: #141210;
+    color: #E8E2DA;
+    border: tall #5C3920;
+}
+Input:focus {
+    border: tall #F2914B;
+}
+Input.-invalid {
+    border: tall #C4462F;
+}
+
+Select > SelectCurrent {
+    background: #141210;
+    color: #E8E2DA;
+    border: tall #5C3920;
+}
+Select:focus > SelectCurrent {
+    border: tall #F2914B;
+}
+Select > SelectOverlay {
+    background: #141210;
+    color: #E8E2DA;
+    border: round #5C3920;
+}
+Select > SelectOverlay > .option-list--option-highlighted {
+    background: #5C3920;
+    color: #F2914B;
+    text-style: bold;
+}
+
+Button {
+    background: #141210;
+    color: #E8E2DA;
+    border: tall #5C3920;
+}
+Button:focus {
+    border: tall #F2914B;
+    text-style: bold;
+}
+Button.-primary {
+    background: #5C3920;
+    color: #F2914B;
+}
+Button.-primary:focus {
+    border: tall #F2914B;
+}
+
+Checkbox {
+    background: #0B0B0B;
+    color: #E8E2DA;
+    border: none;
+}
+Checkbox:focus {
+    color: #F2914B;
+    text-style: bold;
+}
+Checkbox > .toggle--button {
+    background: #141210;
+    color: #F2914B;
+}

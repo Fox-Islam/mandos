@@ -121,7 +121,7 @@ async def test_dashboard_empty_config_renders_issues_and_add_affordance(tmp_path
             "Add member",
             "Wire harnesses",
             "Edit judge",
-            "Run defaults",
+            "Edit run defaults",
             "Refresh model catalog",
             "Quit",
         ]

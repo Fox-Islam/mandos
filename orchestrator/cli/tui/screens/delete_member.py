@@ -23,7 +23,7 @@ class DeleteMemberScreen(DraftCommitMixin, ArrowNavigationMixin, Screen[None]):
         self._dashboard = dashboard
 
     def compose(self) -> ComposeResult:
-        yield Static(f"Delete member: {self.member_id}", id="delete-title", classes="brand")
+        yield Static(f"Delete member: {self.member_id}", id="delete-title", classes="screen-title")
         with Vertical(id="delete-member"):
             yield Static("", id="delete-warning", classes="status")
             with Horizontal(classes="form-row"):
