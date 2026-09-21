@@ -1,6 +1,6 @@
 [project]
 name = "mandos"
-version = "1.0.0"
+version = "1.1.0"
 description = "Cross-harness multi-model deliberation MCP server judged by Jev, a calibrated decision model."
 requires-python = ">=3.13"
 license = "MIT"
