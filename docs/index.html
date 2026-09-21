@@ -18,6 +18,13 @@
   }
   main { max-width: 760px; margin: 0 auto; }
   header { padding: 64px 0 40px; border-bottom: 1px solid var(--line); }
+  .title-row { display: flex; align-items: center; gap: 14px; margin: 0 0 12px; }
+  .title-row h1 { margin: 0; }
+  /* `align-items: center` centres on the 66px line box, which sits 1.5px above the
+     cap-height midpoint of the title because the font's ascent exceeds its descent.
+     Nudge the mark onto the glyphs instead. */
+  .gh { display: inline-flex; color: var(--dim); transform: translateY(1.5px); }
+  .gh:hover { color: var(--accent); }
   h1 { font-size: 40px; margin: 0 0 12px; letter-spacing: -0.02em; color: var(--accent); }
   h2 {
     font-size: 15px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted);
@@ -63,7 +70,14 @@
 <main>
 
 <header>
-  <h1>Mandos</h1>
+  <div class="title-row">
+    <h1>Mandos</h1>
+    <a class="gh" href="https://github.com/Fox-Islam/mandos" aria-label="Mandos on GitHub">
+      <svg viewBox="0 0 16 16" width="28" height="28" aria-hidden="true" focusable="false">
+        <path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.4 7.4 0 0 1 2-.27c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/>
+      </svg>
+    </a>
+  </div>
   <p class="lede">A multi-model deliberation MCP server. A panel of models answers your
   question, a calibrated decision model judges what they established, and your own
   model writes the answer.</p>
@@ -74,7 +88,7 @@
   <a href="https://openrouter.ai/docs/guides/routing/routers/fusion-router">documents
   how</a>. Mandos runs that shape as a local MCP server and changes the analysis stage:
   the judge is <a href="https://typesafe.ai/blog/introducing-system-one-models-and-jev">Jev</a>,
-  which returns calibrated probabilities rather than prose.</p>
+  which returns calibrated probabilities instead of prose.</p>
 </header>
 
 <h2>Quick start</h2>
@@ -104,9 +118,10 @@ printing secrets.</p>
 
 <h2>How it works</h2>
 
-<p>The usual design has a second chat model read the panel and write a summary. That
-summary has the same failure modes as the answers it is grading, and it states its
-confidence in words.</p>
+<p>A panel produces several answers, and something has to work out what they establish.
+The usual choice, Fusion's included, is a second chat model that reads the panel and
+writes a summary. That summary has the same failure modes as the answers it is grading,
+and it states its confidence in words.</p>
 
 <p>Mandos gives the judging to
 <a href="https://typesafe.ai/blog/introducing-system-one-models-and-jev">Jev</a>,
@@ -119,6 +134,12 @@ member scored above 0.6 on that claim, and the scores are returned with it.</p>
 query plan that none of the models had, that comes back as a ranked list, each item
 scored for how likely it is to change the answer. The calling model fetches what it can
 reach and asks again.</p>
+
+<p>How the panel is judged is a per-call choice, not just a setting. <code>hybrid</code>
+adjudicates each claim and attributes it; <code>probe</code> skips deliberation and
+reports only what was missing; <code>matrix</code> measures agreement with no chat model
+in the loop. Set <code>judge.shape</code> for the default, or pass
+<code>judge_shape</code> when the question tells you which one it needs.</p>
 
 <h2>Setup notes</h2>
 
@@ -147,7 +168,7 @@ and holding everything else constant also separates two things that usually move
 together: whether a panel helps because models disagree usefully, or because something
 in the loop notices what is missing.</p>
 
-<p>Answers are graded against a key rather than by another model, so the numbers are
+<p>Answers are graded against a key instead of by another model, so the numbers are
 checkable. What they do not measure is reasoning quality, research, or open-ended
 judgement, which is what a panel is usually convened for.</p>
 
@@ -170,7 +191,7 @@ Correct:  No</code></pre>
 and the evidence loop are the only things that vary.</p>
 
 <p>The withheld fact is supplied only when the judge asked for it, and whether it asked
-is graded by Jev rather than by keyword matching. A judge that does not ask gets no
+is graded by Jev instead of by keyword matching. A judge that does not ask gets no
 second pass, which is the constraint a real caller works under.</p>
 
 <details>
@@ -180,22 +201,22 @@ second model:</p>
 <pre><code>Reason briefly, then end with a single line of exactly the form
 'FINAL: Yes' or 'FINAL: No'. You must commit to one; 'it depends'
 is not an answer.</code></pre>
-<p class="note"><strong>Solo</strong> — the baseline, one call, no panel:</p>
+<p class="note"><strong>Solo</strong> - the baseline, one call, no panel:</p>
 <pre><code>Answer the question. {ANSWER_RULE}</code></pre>
-<p class="note"><strong>Panel member</strong> — the shipped panel prompt:</p>
+<p class="note"><strong>Panel member</strong> - the shipped panel prompt:</p>
 <pre><code>Answer independently and thoroughly. Do not refer to other panelists.
 If answering well needs information you have not been given, say
 plainly what is missing and what you are assuming in its place, then
 answer under that assumption. Name the measurement that would settle
 it, not the topic. {ANSWER_RULE}</code></pre>
-<p class="note"><strong>Author</strong> — writes the final answer from the analysis:</p>
+<p class="note"><strong>Author</strong> - writes the final answer from the analysis:</p>
 <pre><code>A panel was asked this question and a judge analysed their answers.
 You are the author: decide yourself from the analysis and the raw
 answers. The panel members are advisors, not voters, and can be
 confidently and unanimously wrong. Where the analysis carries numbers,
 weight findings by them rather than by how confidently they are
 phrased. {ANSWER_RULE}</code></pre>
-<p class="note"><strong>Claim extraction</strong> — the generative half of the hybrid
+<p class="note"><strong>Claim extraction</strong> - the generative half of the hybrid
 judge, which proposes what Jev then decides. Abridged:</p>
 <pre><code>You read answers from a panel of independent models and list what is
 worth checking. You do NOT judge, rank, merge, or answer the question
@@ -247,26 +268,26 @@ these questions reward stopping to ask over reasoning carefully from incomplete
 premises, and a stronger model builds a more convincing case for the wrong answer.</p>
 
 <p>On the budget tier, the same evidence loop with no panel at all reaches
-16/16 at under half the cost, which is what <code>probe</code> is for.
-That was not measured against the mid-tier panel. Convene a council when the question
-turns on judgement rather than a missing fact.</p>
+16/16 at roughly half the cost, which is what <code>probe</code> is for.
+Convene a council when the question turns on judgement instead of a missing fact.</p>
 
 <p>Questions where the panel and the unaided model disagree:</p>
 
 <p class="note">Panel right, model wrong:</p>
 <ul>
-        <li><code>index_selectivity</code> — mid-tier</li>
-        <li><code>ci_parallel</code> — budget</li>
-        <li><code>ci_parallel</code> — mid-tier</li>
-        <li><code>cache_p99</code> — mid-tier</li>
-        <li><code>read_replica</code> — budget</li>
-        <li><code>read_replica</code> — mid-tier</li>
-        <li><code>code_split</code> — budget</li>
-        <li><code>code_split</code> — mid-tier</li>
+        <li><code>ci_parallel</code> - budget</li>
+        <li><code>read_replica</code> - budget</li>
+        <li><code>code_split</code> - budget</li>
+        <li><code>nginx_timeout</code> - budget</li>
+        <li><code>index_selectivity</code> - mid-tier</li>
+        <li><code>ci_parallel</code> - mid-tier</li>
+        <li><code>cache_p99</code> - mid-tier</li>
+        <li><code>read_replica</code> - mid-tier</li>
+        <li><code>code_split</code> - mid-tier</li>
 </ul>
 <p class="note">Model right, panel wrong:</p>
 <ul>
-        <li><code>kafka_partitions</code> — budget</li>
+        <li><code>kafka_partitions</code> - budget</li>
 </ul>
 
 <p>Both tiers together cost $3.15. Jev is a small part of that, at
