@@ -98,8 +98,14 @@ class JudgeConfig(BaseModel):
 
     ``matrix`` is cheaper, marginally faster and needs no ``defaults.analysis_model``
     at all, being the only shape with no generative model in the judging loop; it
-    returns agreement numbers and an outlier rather than a narrative. ``llm`` needs no
-    Jev. Every Jev shape falls back to the analyst only if Jev cannot deliver.
+    returns agreement numbers and an outlier rather than a narrative.
+
+    ``probe`` is the cheapest and does not deliberate: it reports only what the answers
+    were missing. Pair it with a single-member panel when the question turns on a fact
+    nobody was given rather than on a disagreement.
+
+    ``llm`` needs no Jev. Every Jev shape falls back to the analyst only if Jev cannot
+    deliver.
 
     ``api_key_env`` names the environment variable holding the key — never the key
     itself, and the name is not returned by ``safe_status``. Left unset it follows the

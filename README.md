@@ -12,8 +12,11 @@ Mandos runs that shape as a local MCP server and changes the analysis stage: the
 is [Jev](https://typesafe.ai/blog/introducing-system-one-models-and-jev), which returns
 calibrated probabilities rather than prose.
 
-Measured over 16 questions, a panel reached 15/16 and 16/16 where the same model alone
-reached 13/16 and 11/16. [Full benchmark, with caveats](https://fox-islam.github.io/mandos/).
+Over 16 questions whose answers each turn on a fact nobody was given, a panel reaches
+15/16 and 16/16 where the same model alone reaches 12/16 and 11/16. Those questions test
+one specific failure, a model answering confidently without the information the answer
+depends on, which is common and hard to catch. They say nothing about reasoning tasks in
+general. [Full benchmark, with caveats](https://fox-islam.github.io/mandos/).
 
 ## Quick start
 
@@ -144,11 +147,17 @@ Set `judge.shape` in config, or pass `analysis_model` per call.
 | **`hybrid`** *(default)* | an analyst proposes claims, Jev decides them | the full narrative schema, every finding carrying its numbers |
 | **`matrix`** | Jev alone | pairwise agreement, per-answer rubrics, the outlier — no prose, no generative model anywhere |
 | **`verify`** | the analyst writes, Jev grades what it wrote | each finding keeps its place and gains a probability that it holds |
+| **`probe`** | no deliberation; one cheap call lists what the answers lacked, Jev scores it | `needs_evidence` only |
 | **`llm`** | the analyst alone | uncalibrated, Fusion-style; the fallback |
 
 Only `matrix` needs no chat model for the judge role, and it is the one to pick when
 no generative model should touch the loop at all — though with a two-member panel it
 has little to measure, so a self-panel wants `hybrid`.
+
+`probe` is the shape for a question that turns on a missing fact rather than on a
+disagreement. It skips claim adjudication entirely, so it costs less than `hybrid` and
+works with a panel of one. It reports nothing about where models differ, which is what
+`hybrid` is for.
 
 Each shape falls back in order until one delivers: `hybrid` tries `matrix` before
 `llm`, because an analyst that is unreachable or that proposed nothing says nothing

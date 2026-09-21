@@ -13,6 +13,12 @@ fourth is the generative analyst this project started from, kept as the fallback
 ``verify``
     The generative analyst writes, then Jev grades what it wrote. Every finding keeps
     its place and gains a probability that it holds.
+``probe``
+    No deliberation at all. One cheap generative call lists what the answers did not
+    have, Jev scores each for whether it was genuinely missing and whether having it
+    would change the answer, and nothing else is measured. The shape to use with a
+    panel of one, or whenever the question turns on a missing fact rather than on a
+    disagreement.
 ``llm``
     The generative analyst alone. Fusion-style analysis, uncalibrated.
 
@@ -40,7 +46,7 @@ one that still works when the judge role is unconfigured.
 from __future__ import annotations
 
 from orchestrator.jev import JevClient
-from orchestrator.judge import hybrid, matrix, verify
+from orchestrator.judge import hybrid, matrix, probe, verify
 from orchestrator.judge.extract import extract_claims
 from orchestrator.judge.jev_common import DEFAULT_QUESTIONS_PER_CALL, build_state
 from orchestrator.judge.llm import (
@@ -58,6 +64,9 @@ FALLBACKS: dict[JudgeShape, tuple[JudgeShape, ...]] = {
     "hybrid": ("matrix", "llm"),
     "matrix": ("llm",),
     "verify": ("llm",),
+    # `probe` asks a deliberate question and answers nothing else, so falling back to a
+    # shape that deliberates would return something the caller did not ask for.
+    "probe": (),
     "llm": (),
 }
 
@@ -167,6 +176,32 @@ async def _run_shape(
         return await matrix.run(
             question,
             answers,
+            jev_client,
+            deadline=deadline,
+            context=context,
+            outcome=outcome,
+            batch_size=batch_size,
+        )
+
+    if shape == "probe":
+        extraction = await extract_claims(
+            question,
+            answers,
+            analysis_provider,
+            deadline=deadline,
+            max_tokens=max_tokens,
+            context=context,
+            evidence_only=True,
+        )
+        if extraction.provider_id and extraction.usage is not None:
+            outcome.usages.append((extraction.provider_id, extraction.usage))
+        outcome.analysis_text = extraction.text
+        if extraction.error:
+            return f"evidence extraction failed: {extraction.error}"
+        return await probe.run(
+            question,
+            answers,
+            extraction,
             jev_client,
             deadline=deadline,
             context=context,

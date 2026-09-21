@@ -458,3 +458,82 @@ async def test_one_failed_jev_call_does_not_write_off_the_next_one():
     assert outcome.fallback_from == "hybrid"
     assert outcome.analysis.calibration.shape == "matrix"
     assert len(calls) == 2, "matrix must still get its turn"
+
+
+def _probe_extractor() -> FakeChatProvider:
+    return FakeChatProvider(
+        "ja",
+        text=json.dumps(
+            {"missing_evidence": ["the row count", "the query plan", "already stated"]}
+        ),
+    )
+
+
+async def test_probe_reports_gaps_and_deliberates_about_nothing():
+    script = {
+        qname("lacked", 0): {"noul": 0.95},
+        qname("wouldchange", 0): {"noul": 0.9},
+        qname("lacked", 1): {"noul": 0.8},
+        qname("wouldchange", 1): {"noul": 0.3},
+        qname("lacked", 2): {"noul": 0.05},
+        qname("wouldchange", 2): {"noul": 0.9},
+    }
+    jev = FakeJevClient(script)
+    outcome = await _run("probe", jev, _probe_extractor())
+
+    analysis = outcome.analysis
+    assert outcome.shape == "probe"
+    assert analysis.calibration.shape == "probe"
+    # Sorted by what a second pass would be worth; the one already stated is dropped.
+    assert [e.item for e in analysis.needs_evidence] == ["the row count", "the query plan"]
+    assert analysis.needs_evidence[0].would_change == 0.9
+    # It measures nothing about agreement, by design.
+    assert analysis.consensus == []
+    assert analysis.contradictions == []
+    assert analysis.calibration.claims == []
+    assert analysis.calibration.agreement == []
+    assert "does not deliberate" in analysis.confidence_notes
+
+
+async def test_probe_is_cheaper_than_hybrid_on_the_same_panel():
+    """No support matrix, no contested question, no standing rubric."""
+    probe_jev, hybrid_jev = FakeJevClient(), FakeJevClient()
+    await _run("probe", probe_jev, _probe_extractor())
+    await _run("hybrid", hybrid_jev, _extractor())
+
+    probe_qs = len(probe_jev.calls[0]["questions"])
+    hybrid_qs = sum(len(c["questions"]) for c in hybrid_jev.calls)
+    assert probe_qs < hybrid_qs, (probe_qs, hybrid_qs)
+
+
+async def test_probe_works_with_a_single_member_panel():
+    """The configuration the benchmark measured: one model, no deliberation."""
+    one = [RawAnswer(id="solo", model="m", answer="an answer that assumes a row count")]
+    outcome = await run_judge(
+        "q",
+        one,
+        shape="probe",
+        deadline=time.monotonic() + 30,
+        jev_client=FakeJevClient({qname("lacked", 0): {"noul": 0.9}}),
+        analysis_provider=FakeChatProvider(
+            "ja", text=json.dumps({"missing_evidence": ["the row count"]})
+        ),
+    )
+    assert outcome.shape == "probe"
+    assert [e.item for e in outcome.analysis.needs_evidence] == ["the row count"]
+    assert [p.id for p in outcome.analysis.calibration.per_answer] == ["solo"]
+
+
+async def test_probe_does_not_fall_back_to_a_shape_that_deliberates():
+    """It was asked a specific question; answering a different one would be worse than
+    saying nothing."""
+    from orchestrator.tests.helpers import ANALYSIS_JSON_IDS
+
+    outcome = await _run(
+        "probe",
+        FakeJevClient(error="HTTP 503: down"),
+        FakeChatProvider("ja", text=ANALYSIS_JSON_IDS),
+    )
+    assert outcome.analysis is None
+    assert outcome.shape == "probe"
+    assert outcome.fallback_from is None

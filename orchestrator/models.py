@@ -8,7 +8,8 @@ ReasoningEffort = Literal["low", "medium", "high"]
 
 # How the judge produces its analysis. Jev shapes return calibrated probabilities;
 # ``llm`` is the generative fallback that Fusion-style deliberation started from.
-JudgeShape = Literal["hybrid", "matrix", "verify", "llm"]
+# ``probe`` does no deliberation at all -- it only reports what the answers lacked.
+JudgeShape = Literal["hybrid", "matrix", "verify", "probe", "llm"]
 # ``unsupported`` has no narrative counterpart: it is a claim the extractor proposed
 # that no panel answer turned out to back. Kept because it measures the extraction
 # pass rather than the panel, and that is worth seeing.

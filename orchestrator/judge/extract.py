@@ -25,6 +25,20 @@ MAX_CLAIMS = 12
 MAX_BLIND_SPOTS = 6
 MAX_MISSING = 10
 
+EVIDENCE_ONLY_SYSTEM = (
+    "You read answers from a panel of models and list what they did not have. You do "
+    "NOT judge, rank, merge, or answer the question yourself.\n"
+    "- missing_evidence: facts that are not in the question and that would change the "
+    "answer if they came back one way rather than another. Ask yourself what you "
+    "would have to measure to be sure, and list that. Include anything the answers "
+    "say they are assuming or guessing at, and also anything none of them thought to "
+    "check. Name the measurement, not the subject: 'what proportion of rows have "
+    "status = pending', not 'the database'. Omit anything the question already "
+    "states. Propose generously -- each one is scored afterwards and the weak ones "
+    f"are dropped. At most {MAX_MISSING}.\n"
+    'Output STRICT JSON only: {"missing_evidence": ["..."]}'
+)
+
 EXTRACT_SYSTEM = (
     "You read answers from a panel of independent models and list what is worth "
     "checking. You do NOT judge, rank, merge, or answer the question yourself.\n"
@@ -74,8 +88,12 @@ async def extract_claims(
     deadline: float,
     max_tokens: int | None = None,
     context: str | None = None,
+    evidence_only: bool = False,
 ) -> Extraction:
     """One temperature-0 call proposing claims and blind spots.
+
+    With ``evidence_only``, it proposes nothing but the missing evidence. That is a
+    smaller ask and a smaller answer, which is the point of the ``probe`` shape.
 
     Returns an :class:`Extraction` carrying ``error`` rather than raising, so a failed
     extraction degrades the judge instead of the deliberation.
@@ -87,7 +105,7 @@ async def extract_claims(
 
     result = await provider.complete(
         ChatRequest(
-            system=EXTRACT_SYSTEM,
+            system=EVIDENCE_ONLY_SYSTEM if evidence_only else EXTRACT_SYSTEM,
             user=build_judge_user(question, answers, context),
             max_tokens=max_tokens,
             temperature=0,
@@ -104,11 +122,16 @@ async def extract_claims(
         extraction.error = "extraction returned malformed JSON"
         return extraction
 
-    extraction.claims = _strings(parsed.get("claims"), MAX_CLAIMS)
-    extraction.blind_spots = _strings(parsed.get("blind_spots"), MAX_BLIND_SPOTS)
     extraction.missing_evidence = _strings(parsed.get("missing_evidence"), MAX_MISSING)
+    if not evidence_only:
+        extraction.claims = _strings(parsed.get("claims"), MAX_CLAIMS)
+        extraction.blind_spots = _strings(parsed.get("blind_spots"), MAX_BLIND_SPOTS)
     if extraction.is_empty():
-        extraction.error = "extraction proposed nothing to adjudicate"
+        extraction.error = (
+            "extraction found nothing the answers were missing"
+            if evidence_only
+            else "extraction proposed nothing to adjudicate"
+        )
     return extraction
 
 
