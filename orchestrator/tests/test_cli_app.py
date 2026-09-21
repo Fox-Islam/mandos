@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 from orchestrator import sessions
 from orchestrator.cli.app import detect_wired_harnesses, doctor_report, main
 from orchestrator.cli.harness import wire_claude_code
@@ -65,9 +67,18 @@ def test_clear_sessions_command_clears_local_session_files(tmp_path, monkeypatch
     assert not (tmp_path / "one.json").exists()
     assert (tmp_path / "two.json").exists()
 
-    assert main(["clear-sessions"]) == 0
+    # Clearing every session needs --yes; naming one is its own confirmation.
+    assert main(["clear-sessions"]) == 1
+    out = capsys.readouterr().out
+    assert "1 session in" in out and "--yes" in out
+    assert (tmp_path / "two.json").exists(), "the guard must not delete anything"
+
+    assert main(["clear-sessions", "--yes"]) == 0
     assert "Cleared 1 sessions." in capsys.readouterr().out
     assert not (tmp_path / "two.json").exists()
+
+    assert main(["clear-sessions"]) == 0
+    assert "No sessions to clear." in capsys.readouterr().out
 
 
 def test_refresh_catalog_command_reports_result(monkeypatch, capsys):
@@ -88,3 +99,30 @@ def test_refresh_catalog_command_reports_result(monkeypatch, capsys):
 
     assert main(["refresh-catalog"]) == 0
     assert "Refreshed model catalog: 1 models cached." in capsys.readouterr().out
+
+
+def test_unknown_command_is_an_error_not_the_configurator(capsys):
+    """Falling through to the TUI meant `mandos doctr` opened a full-screen app."""
+    assert main(["doctr"]) == 2
+    err = capsys.readouterr().err
+    assert "unknown command 'doctr'" in err
+    assert "--help" in err
+
+
+def test_version_is_printed_without_starting_the_configurator(capsys):
+    from orchestrator import __version__
+
+    assert main(["--version"]) == 0
+    assert capsys.readouterr().out.strip() == f"mandos {__version__}"
+
+
+def test_config_flag_points_the_readers_at_a_file(tmp_path, monkeypatch, capsys):
+    """README documents `--config <path>`; it used to fall through to the TUI."""
+    monkeypatch.delenv("MANDOS_CONFIG", raising=False)
+    assert main(["--config", str(tmp_path / "nope.yaml"), "doctor"]) == 2
+    assert "no config at" in capsys.readouterr().err
+
+    target = tmp_path / "mandos.yaml"
+    target.write_text("providers: []\n", encoding="utf-8")
+    main(["--config", str(target), "doctor"])
+    assert os.environ["MANDOS_CONFIG"] == str(target)

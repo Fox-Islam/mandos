@@ -1,11 +1,14 @@
 """The ``mandos`` console script: configurator TUI + ``doctor``.
 
 ``main`` dispatches ``mandos`` (full-screen configurator), ``mandos doctor``,
-``mandos refresh-catalog``, ``mandos clear-sessions``, and ``--help``.
+``mandos refresh-catalog``, ``mandos clear-sessions``, ``--version`` and ``--help``.
+An argument it does not recognise is an error: falling through to the configurator
+meant a typo opened a full-screen app the caller then had to work out how to leave.
 """
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -14,7 +17,7 @@ from orchestrator.cli.harness.claude_code import claude_code_path
 from orchestrator.cli.harness.codex import codex_path
 from orchestrator.cli.harness.opencode import opencode_path
 from orchestrator.model_catalog import refresh_cache_if_stale, resolve_model_metadata
-from orchestrator.sessions import clear_sessions
+from orchestrator.sessions import clear_sessions, sessions_root
 from orchestrator.settings import (
     MandosConfig,
     ProviderDescriptor,
@@ -27,11 +30,14 @@ HELP = """mandos - configure the multi-model deliberation council.
 
 Usage:
   mandos            Run the full-screen configurator TUI.
+
+Any command accepts --config <path> to use a config other than the resolved one.
   mandos doctor     Show the resolved roster, roles, and wired harnesses (no secrets).
   mandos refresh-catalog
                     Fetch models.dev metadata into the local catalog cache.
-  mandos clear-sessions [thread_id]
-                    Clear all local council sessions, or one thread when supplied.
+  mandos clear-sessions [thread_id] [--yes]
+                    Clear one thread, or every local council session with --yes.
+  mandos --version  Print the installed version.
   mandos --help     Show this help.
 
 The configurator writes ~/.mandos/config.json and ~/.mandos/.env (0600), then wires
@@ -130,7 +136,21 @@ def doctor() -> int:
     return 0
 
 
-def clear_sessions_command(thread_id: str | None = None) -> int:
+def clear_sessions_command(thread_id: str | None = None, *, assume_yes: bool = False) -> int:
+    """Clear one named thread, or every session when the caller confirms.
+
+    Naming a thread is its own confirmation. Clearing the lot is not reversible and
+    the files hold prompts and panel answers, so it needs ``--yes``.
+    """
+    if thread_id is None and not assume_yes:
+        base = sessions_root()
+        count = len(list(base.glob("*.json"))) if base.exists() else 0
+        if count == 0:
+            print("No sessions to clear.")
+            return 0
+        print(f"{count} session{'s' if count != 1 else ''} in {base}.")
+        print("Re-run with --yes to delete them, or name one thread to clear only that.")
+        return 1
     cleared = clear_sessions(thread_id=thread_id)
     target = f"session {thread_id}" if thread_id else "sessions"
     print(f"Cleared {cleared} {target}.")
@@ -152,17 +172,59 @@ def refresh_catalog_command() -> int:
     return 0
 
 
+def _take_config_flag(args: list[str]) -> str | None:
+    """Pull ``--config <path>`` out of ``args``, returning the path.
+
+    Exported through ``MANDOS_CONFIG`` so every later reader honours it: the
+    configurator's draft loader and ``load_config`` both consult the environment.
+    """
+    for flag in ("--config", "-c"):
+        if flag not in args:
+            continue
+        index = args.index(flag)
+        if index + 1 >= len(args):
+            raise ValueError(f"{flag} needs a path")
+        path = args[index + 1]
+        del args[index : index + 2]
+        return path
+    return None
+
+
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
-    if args and args[0] in ("-h", "--help"):
+    try:
+        config_path = _take_config_flag(args)
+    except ValueError as exc:
+        print(f"mandos: {exc}", file=sys.stderr)
+        return 2
+    if config_path is not None:
+        if not Path(config_path).expanduser().exists():
+            print(f"mandos: no config at {config_path}", file=sys.stderr)
+            return 2
+        os.environ["MANDOS_CONFIG"] = str(Path(config_path).expanduser())
+
+    command = args[0] if args else None
+    if command in ("-h", "--help"):
         print(HELP)
         return 0
-    if args and args[0] == "doctor":
+    if command in ("-V", "--version"):
+        from orchestrator import __version__
+
+        print(f"mandos {__version__}")
+        return 0
+    if command == "doctor":
         return doctor()
-    if args and args[0] == "refresh-catalog":
+    if command == "refresh-catalog":
         return refresh_catalog_command()
-    if args and args[0] == "clear-sessions":
-        return clear_sessions_command(args[1] if len(args) > 1 else None)
+    if command == "clear-sessions":
+        rest = [a for a in args[1:] if a not in ("--yes", "-y")]
+        assume_yes = len(rest) != len(args[1:])
+        return clear_sessions_command(rest[0] if rest else None, assume_yes=assume_yes)
+    if command is not None:
+        print(f"mandos: unknown command {command!r}", file=sys.stderr)
+        print("Run `mandos --help` for usage.", file=sys.stderr)
+        return 2
+
     from orchestrator.cli.tui import MandosApp
 
     result = MandosApp().run()

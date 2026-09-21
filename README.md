@@ -63,8 +63,9 @@ installer checks up front.
 
 The configurator writes `~/.mandos/config.json` and `~/.mandos/.env` (0600), and wires
 the harnesses you pick. `mandos refresh-catalog` updates the local models.dev cache.
-Sessions live in `~/.mandos/sessions/`; clear them with `mandos clear-sessions
-[thread_id]` or the `mandos_clear_sessions` tool.
+Sessions live in `~/.mandos/sessions/`; clear one with `mandos clear-sessions
+<thread_id>`, or all of them with `mandos clear-sessions --yes`. The
+`mandos_clear_sessions` tool does the same.
 
 ## Getting a Jev key
 
@@ -288,7 +289,7 @@ extension; the TUI writes JSON. **Secrets live only in env vars referenced by na
 (`api_key_env`) - never in the config file, never logged, never returned by
 `mandos_status`.
 
-Resolution: `--config <path>` → `MANDOS_CONFIG` → `./mandos.{json,yaml}` →
+Every command takes `--config <path>`. Resolution: `--config <path>` → `MANDOS_CONFIG` → `./mandos.{json,yaml}` →
 `~/.mandos/config.{json,yaml}`.
 
 Four blocks: `judge` (shape, Jev provider, model, key variable), `context` (what the
