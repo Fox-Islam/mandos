@@ -8,7 +8,9 @@ network-listening service.
 
 ## Supported Versions
 
-Security fixes target the default branch until tagged releases exist.
+Security fixes land on the default branch, which is what the installer tracks.
+Tags mark releases; they are not separately patched, so upgrade by re-running the
+installer rather than pinning one.
 
 ## Reporting a Vulnerability
 
