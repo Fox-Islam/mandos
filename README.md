@@ -1,22 +1,19 @@
 # Mandos
 
-A multi-model deliberation MCP server. A panel of models answers your question, a
-calibrated decision model judges what they established, and your own model writes the
-answer from the evidence and the numbers.
+A multi-model deliberation MCP server based on OpenRouter's [Fusion
+routing](https://openrouter.ai/blog/announcements/fusion-beats-frontier/), building
+upon FeanorsCodeSL's [imladris](https://github.com/FeanorsCodeSL/imladris). A panel of
+models answers your question, a calibrated decision model judges what they established,
+and your own model writes the answer from the evidence and the numbers.
 
-The approach is OpenRouter's. Their [Fusion
-router](https://openrouter.ai/blog/announcements/fusion-beats-frontier/) showed that a
-panel of models with an analysis stage beats the frontier models it is built from, and
+The Fusion router showed that a panel of models with an analysis stage beats the
+frontier models it is built from, and
 [documents how](https://openrouter.ai/docs/guides/routing/routers/fusion-router).
 Mandos runs that shape as a local MCP server and changes the analysis stage: the judge
-is [Jev](https://typesafe.ai/blog/introducing-system-one-models-and-jev), which returns
-calibrated probabilities rather than prose.
+is TypeSafe's [Jev](https://typesafe.ai/blog/introducing-system-one-models-and-jev),
+which returns calibrated probabilities rather than prose.
 
-Over 16 questions whose answers each turn on a fact nobody was given, a panel reaches
-15/16 and 16/16 where the same model alone reaches 12/16 and 11/16. Those questions test
-one specific failure, a model answering confidently without the information the answer
-depends on, which is common and hard to catch. They say nothing about reasoning tasks in
-general. [Full benchmark, with caveats](https://fox-islam.github.io/mandos/).
+<https://fox-islam.github.io/mandos/>
 
 ## Quick start
 
