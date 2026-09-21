@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mandos</title>
+<meta name="description" content="A multi-model deliberation MCP server judged by a calibrated decision model.">
+<style>
+  :root {
+    --bg: #0B0B0B; --fg: #E8E2DA; --dim: #9A9186;
+    --accent: #F2914B; --accent-2: #D67D3D; --muted: #A16337; --line: #2A2119;
+    --code-bg: #141210;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 0 20px 80px; background: var(--bg); color: var(--fg);
+    font: 16px/1.65 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Helvetica, sans-serif;
+  }
+  main { max-width: 760px; margin: 0 auto; }
+  header { padding: 64px 0 40px; border-bottom: 1px solid var(--line); }
+  h1 { font-size: 40px; margin: 0 0 12px; letter-spacing: -0.02em; color: var(--accent); }
+  h2 {
+    font-size: 15px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted);
+    margin: 52px 0 16px; font-weight: 600;
+  }
+  h3 { font-size: 17px; margin: 28px 0 8px; color: var(--accent-2); }
+  p, li { color: var(--fg); }
+  .lede { font-size: 19px; line-height: 1.55; color: var(--fg); margin: 0 0 8px; }
+  .sub { display: block; font-size: 13px; color: var(--dim); font-weight: 400; margin-top: 4px; }
+  a { color: var(--accent); }
+  a:hover { color: var(--accent-2); }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em; background: var(--code-bg); padding: 1px 5px; border-radius: 3px;
+    color: var(--accent-2);
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--line); border-radius: 6px;
+    padding: 14px 16px; overflow-x: auto; font-size: 13.5px; line-height: 1.5;
+  }
+  pre code { background: none; padding: 0; color: var(--fg); }
+  table { width: 100%; border-collapse: collapse; margin: 18px 0; font-size: 15px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  thead th {
+    color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .08em;
+  }
+  tbody th { font-weight: 600; }
+  td { font-variant-numeric: tabular-nums; }
+  td.hi { color: var(--accent); font-weight: 600; }
+  details {
+    border: 1px solid var(--line); border-radius: 6px; padding: 12px 16px; margin: 16px 0;
+  }
+  summary { cursor: pointer; color: var(--accent-2); font-size: 15px; }
+  details[open] summary { margin-bottom: 12px; }
+  .note { color: var(--dim); font-size: 14.5px; }
+  footer {
+    margin-top: 64px; padding-top: 20px; border-top: 1px solid var(--line);
+    color: var(--dim); font-size: 14px;
+  }
+</style>
+</head>
+<body>
+<main>
+
+<header>
+  <h1>Mandos</h1>
+  <p class="lede">A multi-model deliberation MCP server. A panel of models answers your
+  question, a calibrated decision model judges what they established, and your own
+  model writes the answer.</p>
+  <p class="note">Named for the Doomsman of the Valar, who pronounces judgement.</p>
+</header>
+
+<h2>What makes it different</h2>
+
+<p>Most multi-model tools have another chat model read the panel and summarise it. That
+summary is one more generation: it smooths disagreement into agreement, and it reports
+its certainty as an adjective you cannot check.</p>
+
+<p>Mandos puts the judging to <a href="https://github.com/Fox-Islam/typesafe-sdk-php">Jev</a>,
+TypeSafe's decision model, which answers named questions in fixed shapes — a probability
+for a yes/no, a label with a distribution, a level on a rubric. So a consensus is not
+asserted, it is derived: every panel member scored above a threshold, and the numbers
+come back with the finding.</p>
+
+<p>It also reports what the panel <em>lacked</em>. If answering well needed a row count,
+a query plan or a latency breakdown that nobody had, that is returned as a ranked list
+with a probability that having it would change the answer. Your model fetches what it
+can and asks again.</p>
+
+<h2>Install</h2>
+
+<pre><code># macOS / Linux
+curl -fsSL https://raw.githubusercontent.com/Fox-Islam/mandos/main/scripts/install.sh | sh
+
+# Windows
+irm https://raw.githubusercontent.com/Fox-Islam/mandos/main/scripts/install.ps1 | iex</code></pre>
+
+<p>The script installs <code>uv</code> if absent, resolves Python 3.13, and puts two
+commands on your PATH: <code>mandos</code> (the configurator) and <code>mandos-mcp</code>
+(the stdio server your harness spawns). Then:</p>
+
+<pre><code>mandos</code></pre>
+
+<p>The configurator sets up your panel, picks the judge, writes
+<code>~/.mandos/config.json</code> and <code>~/.mandos/.env</code> (0600), and wires
+Claude Code, Codex or OpenCode. Invoke it with <code>/council</code>.</p>
+
+<p>Any OpenAI-compatible endpoint works as a panel member, so vLLM, Ollama and
+LM Studio need no special handling. <code>mandos doctor</code> labels each provider
+on-prem or off-prem so you can see what leaves the machine.</p>
+
+<h2>Benchmark</h2>
+
+<p>The claim being tested is narrow: <strong>when a question cannot be answered well
+without a fact nobody has, does convening a panel beat asking one model?</strong></p>
+
+<h3>Setup</h3>
+
+<p>16 questions, each underdetermined until one specific fact arrives, and each fact
+chosen so the plausible answer without it is wrong. Every answer is a forced Yes or No,
+graded against a key.</p>
+
+<pre><code>Q: Our dashboard runs SELECT COUNT(*) FROM organisations on every page
+   load and we are considering replacing it with a counter table
+   maintained by triggers. Is that worth doing?
+
+Withheld: organisations contains 1,180 rows and grows by ~20 a month.
+          The COUNT(*) executes in 0.4ms.
+
+Correct:  No</code></pre>
+
+<p>Four configurations. Within a tier, solo and panel share the same author model, so
+the only variable is the panel, the judge and the evidence loop.</p>
+
+<p><strong>The loop is closed.</strong> The withheld fact is supplied only when the
+judge actually asked for it, graded by Jev rather than by keyword. A judge that fails
+to ask gets no second chance, because a real caller cannot fetch what it was never
+told to fetch.</p>
+
+<details>
+<summary>Prompts</summary>
+<p class="note">Every answer ends with a forced verdict line, so grading needs no
+second model:</p>
+<pre><code>Reason briefly, then end with a single line of exactly the form
+'FINAL: Yes' or 'FINAL: No'. You must commit to one; 'it depends'
+is not an answer.</code></pre>
+<p class="note"><strong>Solo</strong> — the baseline, one call, no panel:</p>
+<pre><code>Answer the question. {ANSWER_RULE}</code></pre>
+<p class="note"><strong>Panel member</strong> — the shipped panel prompt:</p>
+<pre><code>Answer independently and thoroughly. Do not refer to other panelists.
+If answering well needs information you have not been given, say
+plainly what is missing and what you are assuming in its place, then
+answer under that assumption. Name the measurement that would settle
+it, not the topic. {ANSWER_RULE}</code></pre>
+<p class="note"><strong>Author</strong> — writes the final answer from the analysis:</p>
+<pre><code>A panel was asked this question and a judge analysed their answers.
+You are the author: decide yourself from the analysis and the raw
+answers. The panel members are advisors, not voters, and can be
+confidently and unanimously wrong. Where the analysis carries numbers,
+weight findings by them rather than by how confidently they are
+phrased. {ANSWER_RULE}</code></pre>
+<p class="note"><strong>Claim extraction</strong> — the generative half of the hybrid
+judge, which proposes what Jev then decides. Abridged:</p>
+<pre><code>You read answers from a panel of independent models and list what is
+worth checking. You do NOT judge, rank, merge, or answer the question
+yourself.
+- claims: the substantive propositions the answers make...
+- blind_spots: things a careful reader would expect an answer to
+  address that no answer addresses...
+- missing_evidence: facts that are not in the question and that would
+  change the answer if they came back one way rather than another.
+  Ask yourself what you would have to measure to be sure, and list
+  that... Name the measurement, not the subject. Propose generously —
+  each one is scored afterwards and the weak ones are dropped.
+Output STRICT JSON only.</code></pre>
+</details>
+
+<h3>Results</h3>
+
+<table>
+  <thead>
+    <tr><th scope="col">Configuration</th><th scope="col">Solo</th><th scope="col">Panel</th>
+    <th scope="col">Asked</th><th scope="col">Cost/question</th></tr>
+  </thead>
+  <tbody>
+      <tr>
+        <th scope="row">Budget<span class="sub">gemini-3-flash + deepseek-v4-pro<br>author: grok-4.3</span></th>
+        <td>13/16</td>
+        <td class="hi">15/16</td>
+        <td>15/16</td>
+        <td>$0.015</td>
+      </tr>
+      <tr>
+        <th scope="row">Frontier<span class="sub">claude-opus-4.8 + gemini-3.1-pro + gpt-5.5<br>author: claude-opus-4.8</span></th>
+        <td>11/16</td>
+        <td class="hi">16/16</td>
+        <td>15/16</td>
+        <td>$0.182</td>
+      </tr>
+  </tbody>
+</table>
+
+<p><strong>Solo</strong> is the author model alone. <strong>Panel</strong> is the full
+loop. <strong>Asked</strong> is how often the judge named the withheld fact, which
+gates whether the second pass happens at all.</p>
+
+<h3>Conclusion</h3>
+
+<p>The panel recovered all 8 questions the solo baselines got wrong,
+and lost 1 it should have had. Where the two disagreed:</p>
+
+<p class="note">Panel right, solo wrong:</p>
+<ul>
+        <li><code>index_selectivity</code> — frontier</li>
+        <li><code>ci_parallel</code> — budget</li>
+        <li><code>ci_parallel</code> — frontier</li>
+        <li><code>cache_p99</code> — frontier</li>
+        <li><code>read_replica</code> — budget</li>
+        <li><code>read_replica</code> — frontier</li>
+        <li><code>code_split</code> — budget</li>
+        <li><code>code_split</code> — frontier</li>
+</ul>
+<p class="note">Solo right, panel wrong:</p>
+<ul>
+        <li><code>kafka_partitions</code> — budget</li>
+</ul>
+
+<p>The mechanism is the evidence request rather than the panel itself. Where the judge
+named the missing fact, the second pass had it and answered correctly. Where it did
+not ask, no second pass happened and the result rested on the first.</p>
+
+<p>The frontier tier gained more because it started lower: its author answered
+11/16 alone against the budget author's 13/16.
+These questions are built so that thorough reasoning from incomplete premises argues
+itself into the trap, which a stronger model does more convincingly. The panel then
+recovered every one.</p>
+
+<p>Total run cost was $3.15 across both tiers. The judge is a rounding
+error within that — a Jev call adjudicating a whole panel costs around $0.0002.</p>
+
+<h3>Caveats</h3>
+
+<ul>
+  <li>16 questions, one repeat. A one- or two-question gap is not a result.</li>
+  <li>The questions are built so that a missing fact decides the answer. That is the
+  mechanism being tested, and it flatters any method that asks for evidence. It says
+  nothing about questions where the panel has everything it needs and genuinely
+  disagrees.</li>
+  <li>Answers are binary and auto-graded. Nothing here measures the quality of an
+  explanation, which is what most people convene a panel for.</li>
+  <li>The frontier tier used <code>claude-opus-4.8</code> and <code>gpt-5.5</code>,
+  both a generation behind <code>claude-fable-5.1</code> and <code>gpt-5.6-sol</code>.
+  Read that row as "a strong panel", not "the strongest available".</li>
+  <li>The panel has no web access and cannot read your files. Evidence reaches it
+  because the calling model gathers it.</li>
+  <li>This is not <a href="https://openrouter.ai/docs/guides/routing/routers/fusion-router">OpenRouter
+  Fusion's</a> benchmark. Theirs is DRACO: 100 deep-research tasks, rubric-graded, with
+  web search and a shell available to every model. None of that is reproducible here.</li>
+</ul>
+
+<footer>
+  <a href="https://github.com/Fox-Islam/mandos">Source</a> ·
+  <a href="https://github.com/Fox-Islam/mandos/tree/main/docs/architecture">Architecture</a> ·
+  MIT
+</footer>
+
+</main>
+</body>
+</html>
