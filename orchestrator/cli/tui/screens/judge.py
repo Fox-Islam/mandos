@@ -1,9 +1,8 @@
 """Judge screen: which judge decides, on which provider, with which key.
 
-The judge is the thing this project is about, so it gets its own screen rather than a
-row on the defaults form. Everything here except the key is written to
-``config.json``; the key itself only ever reaches ``.env`` at 0600, and the config
-records its variable name.
+The judge has its own screen, not a row on the defaults form. Everything here except
+the key is written to ``config.json``; the key itself only ever reaches ``.env`` at
+0600, and the config records its variable name.
 """
 
 from __future__ import annotations
@@ -14,6 +13,7 @@ from textual.screen import Screen
 from textual.widgets import Button, Input, Select, Static
 
 from orchestrator.cli.config_ops import persist
+from orchestrator.cli.tui.screens.base import DraftCommitMixin
 from orchestrator.cli.tui.screens.navigation import ARROW_NAV_BINDINGS, ArrowNavigationMixin
 from orchestrator.jev import PROVIDERS as JEV_PROVIDERS
 
@@ -28,7 +28,7 @@ SHAPES = [
 ]
 
 
-class JudgeScreen(ArrowNavigationMixin, Screen[None]):
+class JudgeScreen(DraftCommitMixin, ArrowNavigationMixin, Screen[None]):
     """Edit the judge: shape, Jev provider, model, endpoint and key."""
 
     BINDINGS = [*ARROW_NAV_BINDINGS, ("escape", "cancel", "Cancel")]
@@ -78,10 +78,8 @@ class JudgeScreen(ArrowNavigationMixin, Screen[None]):
 
     def action_apply_judge(self) -> None:
         draft = self.app.draft
-        if draft is None:
-            self._set_status("config draft is not loaded")
-            return
-        try:
+
+        def apply() -> None:
             config = draft.to_config()
             judge = config.judge
             judge.shape = str(self.query_one(SEL_SHAPE, Select).value)
@@ -94,12 +92,8 @@ class JudgeScreen(ArrowNavigationMixin, Screen[None]):
             # A blank key keeps whatever is stored; the config never holds the value.
             changes = {judge.resolved_api_key_env: token} if token else {}
             persist(config, changes, draft.source_path, env_path=draft.env_path)
-        except Exception as exc:
-            self._set_status(str(exc))
-            return
-        self.app.refresh_dashboard_state()
-        self._refresh_dashboard_widget()
-        self.app.pop_screen()
+
+        self.commit(draft, apply)
 
     def _load(self) -> None:
         draft = self.app.draft

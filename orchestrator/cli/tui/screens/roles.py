@@ -10,6 +10,7 @@ from textual.screen import Screen
 from textual.widgets import Button, Checkbox, Select, Static
 
 from orchestrator.cli.config_ops import persist, set_judge, set_panel
+from orchestrator.cli.tui.screens.base import DraftCommitMixin
 from orchestrator.cli.tui.screens.navigation import ARROW_NAV_BINDINGS, ArrowNavigationMixin
 
 NONE_VALUE = "__none__"
@@ -17,7 +18,7 @@ VALID_ID_FRAGMENT = re.compile(r"^[A-Za-z0-9_-]+$")
 SEL_JUDGE_SELECT = "#judge-select"
 
 
-class RolesScreen(ArrowNavigationMixin, Screen[None]):
+class RolesScreen(DraftCommitMixin, ArrowNavigationMixin, Screen[None]):
     """Assign judge and panel membership independently."""
 
     BINDINGS = [*ARROW_NAV_BINDINGS, ("escape", "cancel", "Cancel")]
@@ -54,10 +55,8 @@ class RolesScreen(ArrowNavigationMixin, Screen[None]):
 
     def action_apply_roles(self) -> None:
         draft = self.app.draft
-        if draft is None:
-            self._set_status("config draft is not loaded")
-            return
-        try:
+
+        def apply() -> None:
             config = draft.to_config()
             config = set_judge(config, self._selected_role(SEL_JUDGE_SELECT))
             for provider in draft.providers:
@@ -65,12 +64,8 @@ class RolesScreen(ArrowNavigationMixin, Screen[None]):
                 checkbox = self.query_one(f"#{checkbox_id}", Checkbox)
                 config = set_panel(config, provider.id, checkbox.value)
             persist(config, {}, draft.source_path, env_path=draft.env_path)
-        except Exception as exc:
-            self._set_status(str(exc))
-            return
-        self.app.refresh_dashboard_state()
-        self._refresh_dashboard_widget()
-        self.app.pop_screen()
+
+        self.commit(draft, apply)
 
     def _load_roles(self) -> None:
         draft = self.app.draft

@@ -8,10 +8,11 @@ from textual.screen import Screen
 from textual.widgets import Button, Static
 
 from orchestrator.cli.config_ops import delete_member, persist, referenced_env_keys
+from orchestrator.cli.tui.screens.base import DraftCommitMixin
 from orchestrator.cli.tui.screens.navigation import ARROW_NAV_BINDINGS, ArrowNavigationMixin
 
 
-class DeleteMemberScreen(ArrowNavigationMixin, Screen[None]):
+class DeleteMemberScreen(DraftCommitMixin, ArrowNavigationMixin, Screen[None]):
     """Confirm deletion of a selected provider member."""
 
     BINDINGS = [*ARROW_NAV_BINDINGS, ("escape", "cancel", "Cancel")]
@@ -45,22 +46,16 @@ class DeleteMemberScreen(ArrowNavigationMixin, Screen[None]):
 
     def action_confirm_delete(self) -> None:
         draft = self.app.draft
-        if draft is None:
-            self._set_status("config draft is not loaded")
-            return
-        try:
+
+        def apply() -> None:
             before_keys = {
                 provider.api_key_env for provider in draft.providers if provider.api_key_env
             }
             after = delete_member(draft, self.member_id)
             prune_keys = tuple(sorted(before_keys - referenced_env_keys(after)))
             persist(after, {}, draft.source_path, prune_keys, env_path=draft.env_path)
-        except Exception as exc:
-            self._set_status(str(exc))
-            return
-        self.app.refresh_dashboard_state()
-        self._refresh_dashboard_widget()
-        self.app.pop_screen()
+
+        self.commit(draft, apply)
 
     def _render_warning(self) -> None:
         draft = self.app.draft

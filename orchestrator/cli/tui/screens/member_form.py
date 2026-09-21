@@ -21,6 +21,7 @@ from orchestrator.cli.config_ops import (
     plan_token_update,
     update_member,
 )
+from orchestrator.cli.tui.screens.base import DraftCommitMixin
 from orchestrator.cli.tui.screens.navigation import ARROW_NAV_BINDINGS, ArrowNavigationMixin
 from orchestrator.model_catalog import ModelMetadata, resolve_model_metadata
 from orchestrator.settings import ContextWindowSource, ProviderDescriptor
@@ -39,7 +40,7 @@ SEL_MODEL_SELECT = "#model-select"
 SEL_CONTEXT_WINDOW = "#context-window"
 
 
-class MemberFormScreen(ArrowNavigationMixin, Screen[None]):
+class MemberFormScreen(DraftCommitMixin, ArrowNavigationMixin, Screen[None]):
     """Single-screen form for creating or editing a provider member."""
 
     BINDINGS = [*ARROW_NAV_BINDINGS, ("escape", "cancel", "Cancel")]
@@ -217,10 +218,8 @@ class MemberFormScreen(ArrowNavigationMixin, Screen[None]):
 
     def action_save(self) -> None:
         draft = self._draft()
-        if draft is None:
-            self._set_status("config draft is not loaded")
-            return
-        try:
+
+        def apply() -> None:
             member_data = self._member_data()
             token_changes, prune_env_keys = self._token_plan(draft, member_data)
             if self.mode == "add":
@@ -241,12 +240,8 @@ class MemberFormScreen(ArrowNavigationMixin, Screen[None]):
                 prune_env_keys,
                 env_path=draft.env_path,
             )
-        except Exception as exc:
-            self._set_status(str(exc))
-            return
-        self.app.refresh_dashboard_state()
-        self._refresh_dashboard_widget()
-        self.app.pop_screen()
+
+        self.commit(draft, apply)
 
     def _load_member(self) -> None:
         draft = self._draft()

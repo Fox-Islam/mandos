@@ -8,13 +8,14 @@ from textual.screen import Screen
 from textual.widgets import Button, Input, Select, Static
 
 from orchestrator.cli.config_ops import persist
+from orchestrator.cli.tui.screens.base import DraftCommitMixin
 from orchestrator.cli.tui.screens.navigation import ARROW_NAV_BINDINGS, ArrowNavigationMixin
 
 NONE_VALUE = "__none__"
 SEL_PRESET_SELECT = "#preset-select"
 
 
-class DefaultsScreen(ArrowNavigationMixin, Screen[None]):
+class DefaultsScreen(DraftCommitMixin, ArrowNavigationMixin, Screen[None]):
     """Edit persisted defaults used when a tool call does not override them."""
 
     BINDINGS = [*ARROW_NAV_BINDINGS, ("escape", "cancel", "Cancel")]
@@ -56,10 +57,8 @@ class DefaultsScreen(ArrowNavigationMixin, Screen[None]):
 
     def action_apply_defaults(self) -> None:
         draft = self.app.draft
-        if draft is None:
-            self._set_status("config draft is not loaded")
-            return
-        try:
+
+        def apply() -> None:
             config = draft.to_config()
             defaults = config.defaults
             defaults.preset = self._selected_preset()
@@ -68,12 +67,8 @@ class DefaultsScreen(ArrowNavigationMixin, Screen[None]):
             defaults.temperature = self._temperature()
             defaults.max_depth = self._positive_int("#max-depth", "max recursion depth")
             persist(config, {}, draft.source_path, env_path=draft.env_path)
-        except Exception as exc:
-            self._set_status(str(exc))
-            return
-        self.app.refresh_dashboard_state()
-        self._refresh_dashboard_widget()
-        self.app.pop_screen()
+
+        self.commit(draft, apply)
 
     def _load_defaults(self) -> None:
         draft = self.app.draft
