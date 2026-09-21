@@ -1,6 +1,6 @@
 Screen {
     background: #0B0B0B;
-    color: #F2C04B;
+    color: #F2914B;
 }
 
 #dashboard {
@@ -9,12 +9,12 @@ Screen {
     height: 1fr;
     background: #0B0B0B;
     padding: 0 1;
-    border: double #F2C04B;
+    border: double #F2914B;
     border-title-align: center;
-    border-title-color: #F2C04B;
+    border-title-color: #F2914B;
     border-title-style: bold;
     border-subtitle-align: center;
-    border-subtitle-color: #8A6E2F;
+    border-subtitle-color: #A16337;
 }
 
 #dashboard-body {
@@ -27,28 +27,28 @@ Screen {
     min-width: 22;
     height: 1fr;
     background: #0B0B0B;
-    border: round #5C4520;
+    border: round #5C3920;
     border-title-align: left;
-    border-title-color: #D6A93D;
+    border-title-color: #D67D3D;
     padding: 0 1;
 }
 
 #dashboard-main {
     width: 1fr;
     height: 1fr;
-    border: round #5C4520;
+    border: round #5C3920;
     border-title-align: left;
-    border-title-color: #D6A93D;
+    border-title-color: #D67D3D;
     padding: 0 1;
 }
 
 .brand {
     background: #0B0B0B;
-    color: #F2C04B;
+    color: #F2914B;
     text-style: bold;
     height: 10;
     padding: 0 1;
-    border: round #F2C04B;
+    border: round #F2914B;
 }
 
 #brand {
@@ -58,7 +58,7 @@ Screen {
 }
 
 .meta {
-    color: #D6A93D;
+    color: #D67D3D;
     height: 1;
     padding: 0 1;
 }
@@ -68,7 +68,7 @@ Screen {
 }
 
 #roster-title {
-    color: #F2C04B;
+    color: #F2914B;
     text-style: bold;
     height: 1;
 }
@@ -77,28 +77,28 @@ Screen {
     height: 1fr;
     min-height: 5;
     background: #0B0B0B;
-    color: #F2C04B;
+    color: #F2914B;
 }
 
 #roster > .datatable--header {
     background: #0B0B0B;
-    color: #D6A93D;
+    color: #D67D3D;
     text-style: bold;
 }
 
 #roster > .datatable--cursor {
-    background: #F2C04B;
+    background: #F2914B;
     color: #0B0B0B;
 }
 
 .status {
-    color: #F2C04B;
+    color: #F2914B;
     min-height: 3;
     max-height: 6;
 }
 
 #actions-title {
-    color: #F2C04B;
+    color: #F2914B;
     text-style: bold;
     height: 1;
 }
@@ -107,12 +107,12 @@ Screen {
     height: auto;
     min-height: 5;
     background: #0B0B0B;
-    color: #F2C04B;
+    color: #F2914B;
     margin: 1 0;
 }
 
 #action-menu > .option-list--option-highlighted {
-    background: #F2C04B;
+    background: #F2914B;
     color: #0B0B0B;
 }
 
@@ -127,7 +127,7 @@ Screen {
 }
 
 .field-label {
-    color: #D6A93D;
+    color: #D67D3D;
     height: 1;
     width: auto;
 }
